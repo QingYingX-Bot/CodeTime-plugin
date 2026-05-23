@@ -13,6 +13,7 @@ import {
   replyError,
   sumMinutes
 } from '../../model/codetimeUtils.js'
+import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 function formatHourDistribution(items = []) {
   if (!Array.isArray(items) || items.length === 0) return '暂无'
@@ -27,6 +28,20 @@ function formatHourDistribution(items = []) {
     .sort((a, b) => a[0] - b[0])
     .map(([hour, count]) => `${String(hour).padStart(2, '0')}点：${count}次`)
     .join('，')
+}
+
+function formatHourDistributionItems(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return []
+
+  const hourMap = new Map()
+  for (const item of items) {
+    const hour = Number(item.hour || 0)
+    hourMap.set(hour, (hourMap.get(hour) || 0) + Number(item.count || 0))
+  }
+
+  return Array.from(hourMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([hour, count]) => `${String(hour).padStart(2, '0')}点 ${count}次`)
 }
 
 function formatDurationMs(ms = 0) {
@@ -116,6 +131,36 @@ function formatModelTop(items = []) {
       lines.push(`${index + 1}. ${name} - ${formatTokenValue(getModelTokenCount(item))}`)
     })
   return lines
+}
+
+function formatDurationRows(items = [], limit = 3) {
+  return (items || []).slice(0, limit).map((item, index) => ({
+    name: `${index + 1}. ${item.field || item.by || item.language || item.project || '未知'}`,
+    value: formatMinutes(item.minutes || item.duration || item.totalMinutes),
+    sub: item.time || ''
+  }))
+}
+
+function formatTokenRows(items = [], nameKeys = [], valueKeys = ['totalTokens', 'tokens'], limit = 3) {
+  return (items || [])
+    .slice()
+    .sort((a, b) => Number(b[valueKeys[0]] || 0) - Number(a[valueKeys[0]] || 0))
+    .slice(0, limit)
+    .map((item, index) => ({
+      name: `${index + 1}. ${nameKeys.map((key) => item[key]).find(Boolean) || '未知'}`,
+      value: formatTokenValue(valueKeys.map((key) => Number(item[key] || 0)).find((num) => num > 0) || 0)
+    }))
+}
+
+function formatModelRows(items = [], limit = 3) {
+  return (items || [])
+    .slice()
+    .sort((a, b) => getModelTokenCount(b) - getModelTokenCount(a))
+    .slice(0, limit)
+    .map((item, index) => ({
+      name: `${index + 1}. ${item.pricing?.displayName || item.model || '未知'}`,
+      value: formatTokenValue(getModelTokenCount(item))
+    }))
 }
 
 export class today extends plugin {
@@ -208,6 +253,38 @@ export class today extends plugin {
       lines.push(...formatTopList('项目Top', agentData?.projectTokens, ['project', 'name']))
       lines.push(...formatModelTop(agentData?.modelCosts))
       lines.push(...formatTopList('Agent Top', agentData?.agentCosts, ['source', 'agent', 'name']))
+
+      const sections = []
+      if (languageList.length > 0) sections.push({ title: '语言 Top', items: formatDurationRows(languageList) })
+      if (workspaceList.length > 0) sections.push({ title: '项目 Top', items: formatDurationRows(workspaceList) })
+      if (distributionList.length > 0) sections.push({ title: '时间分布', type: 'time-distribution', points: distributionList })
+      if ((agentData?.projectTokens || []).length > 0) sections.push({ title: 'AI 项目 Top', items: formatTokenRows(agentData.projectTokens, ['project', 'name']) })
+      if ((agentData?.modelCosts || []).length > 0) sections.push({ title: 'AI 模型 Top', items: formatModelRows(agentData.modelCosts) })
+      if ((agentData?.agentCosts || []).length > 0) sections.push({ title: 'AI Agent Top', items: formatTokenRows(agentData.agentCosts, ['source', 'agent', 'name']) })
+
+      const view = {
+        title: 'CodeTime 今日',
+        subtitle: `账号：${ctx.account.username || '未知'} · 日期：${formatDateTime(range.startTime).slice(0, 10)}`,
+        badges: ['今日总览', ctx.tz || getDefaultTimezone()],
+        metrics: [
+          { label: '编程总时长', value: formatMinutes(sumMinutes(timeList)) },
+          { label: 'AI 会话', value: formatNumber(agentSummary.totalSessions || 0) },
+          { label: 'AI Token', value: formatTokenValue(agentSummary.totalTokens || 0) },
+          { label: 'AI 成本', value: formatUsd(sumEstimatedCost(agentData)) },
+          { label: 'AI 时长', value: formatDurationMs(agentSummary.totalDurationMs || 0) },
+          { label: '工具调用', value: formatNumber(agentSummary.totalToolCalls || 0) },
+          { label: '事件', value: formatNumber(agentSummary.totalEvents || 0) },
+          { label: '代码变更', value: `+${formatNumber(agentSummary.totalLinesAdded || 0)} / -${formatNumber(agentSummary.totalLinesRemoved || 0)}` }
+        ],
+        sections
+      }
+
+      try {
+        const img = await renderCodeTimeCard('today', { view })
+        if (img) return e.reply(img)
+      } catch (err) {
+        logger.error(`[CodeTime] 今日渲染失败: ${err}`)
+      }
 
       return e.reply(lines.join('\n'))
     } catch (err) {

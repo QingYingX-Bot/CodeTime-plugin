@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{pageTitle}}</title>
+  <link rel="stylesheet" href="{{ResPath}}common/codetime.css" />
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <h1 class="title">{{title}}</h1>
+      <div class="subtitle">{{subtitle}}</div>
+      <div class="badges">{{@ badgesHtml}}</div>
+    </div>
+
+    {{@ metricsBlockHtml}}
+    {{@ sectionsHtml}}
+    {{@ sessionsHtml}}
+    <div class="footer">CodeTime-plugin</div>
+  </div>
+</body>
+</html>

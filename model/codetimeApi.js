@@ -261,6 +261,14 @@ export class CodeTimeApi {
     return this.request('/users/self/top', { field })
   }
 
+  getLeaderboard({ days = 1 } = {}) {
+    return this.request('/public/leaderboard', { days })
+  }
+
+  getOverallRank({ days = 1 } = {}) {
+    return this.request('/users/self/overall-rank', { days })
+  }
+
   getTimeDistribution({ startTime, endTime, tz = DEFAULT_TZ } = {}) {
     return this.request('/users/self/time-distribution', {
       start_time: startTime,

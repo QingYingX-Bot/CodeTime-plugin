@@ -132,7 +132,9 @@
 
 ## 编程时间
 
-`#ct(编程)?(日|周|月|年)时间` -> `/v3/users/self/stats_time`
+`#ct时间` -> `/v3/users/self/stats_time`
+
+`#ct(日|周|月|年)时间` -> `/v3/users/self/stats_time`
 
 默认携带 `tz=Asia/Shanghai`。
 
@@ -180,7 +182,9 @@
 
 ## 编程详情
 
-`#ct(编程)?(日|周|月|年)详情 <语言|项目>` -> `/v3/users/self/stats`
+`#ct详情 <语言|项目>` -> `/v3/users/self/stats`
+
+`#ct(日|周|月|年)详情 <语言|项目>` -> `/v3/users/self/stats`
 
 默认携带 `tz=Asia/Shanghai`。
 
@@ -240,9 +244,9 @@
 }
 ```
 
-## 排行
+## 统计
 
-`#ct(编程)?排行 <语言|项目|平台>` -> `/v3/users/self/top`
+`#ct(编程)?统计 <语言|项目|平台>` -> `/v3/users/self/top`
 
 字段映射：
 
@@ -269,9 +273,25 @@
 ]
 ```
 
+## 排行榜
+
+`#ct排行` -> `/v3/public/leaderboard?days=1`
+
+`#ct排行榜` -> `/v3/public/leaderboard?days=1`
+
+`#ct排行日榜` -> `/v3/public/leaderboard?days=1`
+
+`#ct排行周榜` -> `/v3/public/leaderboard?days=<当周到今天的天数>`
+
+`#ct排行月榜` -> `/v3/public/leaderboard?days=<当月到今天的天数>`
+
+`#ct排行年榜` -> `/v3/public/leaderboard?days=<当年到今天的天数>`
+
 ## 时间分布
 
-`#ct(编程)?(日|周|月|年)时间分布` -> `/v3/users/self/time-distribution`
+`#ct时间分布` -> `/v3/users/self/time-distribution`
+
+`#ct(日|周|月|年)时间分布` -> `/v3/users/self/time-distribution`
 
 默认携带 `tz=Asia/Shanghai`。
 

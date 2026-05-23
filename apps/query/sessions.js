@@ -2,7 +2,6 @@ import plugin from '../../../../lib/plugins/plugin.js'
 import common from '../../../../lib/common/common.js'
 import {
   formatNumber,
-  formatDateTime,
   getDefaultTimezone
 } from '../../model/codetimeApi.js'
 import {
@@ -10,6 +9,7 @@ import {
   getLastNumber,
   replyError
 } from '../../model/codetimeUtils.js'
+import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 function trimDecimals(text) {
   return String(text).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
@@ -78,6 +78,25 @@ function formatSessionNode(session, index) {
   ].join('\n')
 }
 
+function formatSessionView(session, index) {
+  return {
+    index: index + 1,
+    project: session.project || '未知项目',
+    source: session.source || session.agent || '未知来源',
+    startedAt: formatDateOnly(session.startedAt),
+    lastEventAt: formatDateOnly(session.lastEventAt),
+    sessionId: session.sessionId || '未知',
+    duration: formatDurationMs(session.durationMs || 0),
+    turns: formatNumber(session.turnCount || 0),
+    tools: formatNumber(session.toolCallCount || 0),
+    inputTokens: formatTokenValue(session.inputTokens || 0),
+    outputTokens: formatTokenValue(session.outputTokens || 0),
+    totalTokens: formatTokenValue(getModelTokenCount(session)),
+    linesAdded: formatNumber(session.linesAdded || 0),
+    linesRemoved: formatNumber(session.linesRemoved || 0)
+  }
+}
+
 export class sessions extends plugin {
   constructor() {
     super({
@@ -103,6 +122,19 @@ export class sessions extends plugin {
       if (sessions.length === 0) return e.reply('暂无 AI 记录')
 
       const messages = sessions.slice(0, limit).map((session, index) => formatSessionNode(session, index))
+      const view = {
+        title: 'CodeTime AI 记录',
+        subtitle: `最新 ${messages.length} 条会话记录`,
+        badges: ['Agent Sessions', `limit=${limit}`],
+        sessions: sessions.slice(0, limit).map((session, index) => formatSessionView(session, index))
+      }
+
+      try {
+        const img = await renderCodeTimeCard('sessions', { view })
+        if (img) return e.reply(img)
+      } catch (err) {
+        logger.error(`[CodeTime] AI 记录渲染失败: ${err}`)
+      }
 
       if (messages.length === 1) {
         return e.reply(messages[0])

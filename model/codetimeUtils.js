@@ -89,9 +89,10 @@ export function getTimeWindow(scope = '月') {
   }
 
   const todayStart = Date.UTC(year, month, day) - SHANGHAI_OFFSET_MS
+  const todayEnd = todayStart + 86400000 - 1
   const startParts = getShanghaiParts(new Date(start))
   const startTime = new Date(start).toISOString()
-  const endTime = now.toISOString()
+  const endTime = scope === '日' ? new Date(todayEnd).toISOString() : now.toISOString()
   const days = Math.max(1, Math.round((todayStart - start) / 86400000) + 1)
 
   return {

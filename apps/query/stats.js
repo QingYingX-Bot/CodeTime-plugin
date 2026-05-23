@@ -1,61 +1,53 @@
+import common from '../../../../lib/common/common.js'
 import plugin from '../../../../lib/plugins/plugin.js'
 import {
-  formatStatsLines,
+  formatTopItems,
   getApiContext,
-  getTimeWindow,
-  parseTimeScope,
-  sumMinutes
+  getFieldLabel,
+  parseField,
+  parseFieldLabel
 } from '../../model/codetimeUtils.js'
-import { formatMinutes } from '../../model/codetimeApi.js'
 
 export class stats extends plugin {
   constructor() {
     super({
       name: 'CodeTime',
-      dsc: 'CodeTime 编程时间',
+      dsc: 'CodeTime 统计',
       event: 'message',
       priority: 50,
       rule: [
-        { reg: '^#ct(编程)?(日|周|月|年)时间$', fnc: 'programmingTime' }
+        { reg: '^#ct(编程)?统计\\s*(语言|项目|平台)?$', fnc: 'stats' }
       ]
     })
   }
 
-  async programmingTime(e) {
+  async stats(e) {
     const ctx = await getApiContext(e)
     if (!ctx) return false
 
-    const scope = parseTimeScope(e.msg)
-    const window = getTimeWindow(scope)
+    const field = parseField(e.msg)
+    const targets = field ? [field] : ['language', 'workspace', 'platform']
 
     try {
-      let data
-      try {
-        data = await ctx.api.getStatsTime({
-          tz: ctx.tz,
-          startTime: window.startTime,
-          endTime: window.endTime
-        })
-      } catch (err) {
-        if (err.message !== '请升级订阅计划') throw err
-        data = await ctx.api.getStatsTime({
-          tz: ctx.tz,
-          limit: window.days
-        })
+      const results = await Promise.all(targets.map((target) => ctx.api.getTop({ field: target })))
+
+      if (!field) {
+        const nodes = results.map((items, index) => [
+          `CodeTime ${getFieldLabel(targets[index])}统计`,
+          formatTopItems(items || [])
+        ].join('\n'))
+        return e.reply(await common.makeForwardMsg(e, nodes, 'CodeTime 统计'))
       }
 
-      const list = data?.data || []
-      if (list.length === 0) return e.reply('暂无编程时间记录', true)
-
+      const items = results[0] || []
+      if (items.length === 0) return e.reply(`暂无${parseFieldLabel(e.msg) || '统计'}数据`)
       return e.reply([
-        `CodeTime ${scope}时间`,
-        `账号：${ctx.account.username || '未知'}`,
-        `总时长：${formatMinutes(sumMinutes(list))}`,
-        formatStatsLines('按日期明细', list)
-      ].join('\n'), true)
+        `CodeTime ${parseFieldLabel(e.msg) || '统计'}`,
+        formatTopItems(items)
+      ].join('\n'))
     } catch (err) {
-      if (err.message === '请升级订阅计划') return e.reply('请升级订阅计划', true)
-      return e.reply(`请求失败：${err.message}`, true)
+      logger.error(`[CodeTime] 请求失败: ${err}`)
+      return e.reply(`请求失败：${err.message}`)
     }
   }
 }

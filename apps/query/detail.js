@@ -19,7 +19,7 @@ export class detail extends plugin {
       event: 'message',
       priority: 50,
       rule: [
-        { reg: '^#ct(编程)?(日|周|月|年)详情\\s*(语言|项目)?$', fnc: 'detail' }
+        { reg: '^#ct(编程)?(日|周|月|年)?详情\\s*(语言|项目)?$', fnc: 'detail' }
       ]
     })
   }
