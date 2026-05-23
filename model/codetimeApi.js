@@ -268,4 +268,20 @@ export class CodeTimeApi {
       tz
     })
   }
+
+  getAgentDashboard({ tz = DEFAULT_TZ, since, until, days } = {}) {
+    return this.request('/agent/dashboard', {
+      tz,
+      since,
+      until,
+      days
+    })
+  }
+
+  getAgentSessions({ limit = 10, cursor } = {}) {
+    return this.request('/agent/sessions', {
+      limit,
+      cursor
+    })
+  }
 }

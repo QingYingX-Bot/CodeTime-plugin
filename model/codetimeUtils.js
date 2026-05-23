@@ -61,6 +61,10 @@ export function parseTimeScope(message = '') {
   return String(message).match(/#ct(?:编程)?([日周月年])(?:时间分布|时间|详情)/)?.[1] || '月'
 }
 
+export function parseAgentTimeScope(message = '') {
+  return String(message).match(/#ctai([日周月年])统计/)?.[1] || '日'
+}
+
 export function getTimeWindow(scope = '月') {
   const now = new Date()
   const { year, month, day, weekday } = getShanghaiParts(now)
@@ -102,6 +106,41 @@ export function getTimeWindow(scope = '月') {
 export function getTimeRange(scope = '月') {
   const { startTime, endTime } = getTimeWindow(scope)
   return { startTime, endTime }
+}
+
+export function getCalendarTimeWindow(scope = '日') {
+  const { year, month, day, weekday } = getShanghaiParts(new Date())
+  let start
+
+  switch (scope) {
+    case '周': {
+      const offset = weekday === 0 ? -6 : 1 - weekday
+      start = Date.UTC(year, month, day + offset) - SHANGHAI_OFFSET_MS
+      break
+    }
+    case '月':
+      start = Date.UTC(year, month, 1) - SHANGHAI_OFFSET_MS
+      break
+    case '年':
+      start = Date.UTC(year, 0, 1) - SHANGHAI_OFFSET_MS
+      break
+    case '日':
+    default:
+      start = Date.UTC(year, month, day) - SHANGHAI_OFFSET_MS
+      break
+  }
+
+  const todayStart = Date.UTC(year, month, day) - SHANGHAI_OFFSET_MS
+  const until = todayStart + 86400000 - 1
+  const startParts = getShanghaiParts(new Date(start))
+
+  return {
+    since: new Date(start).toISOString(),
+    until: new Date(until).toISOString(),
+    days: Math.max(1, Math.round((todayStart - start) / 86400000) + 1),
+    startDate: formatDatePart(startParts.year, startParts.month, startParts.day),
+    endDate: formatDatePart(year, month, day)
+  }
 }
 
 export async function getApiContext(e) {
