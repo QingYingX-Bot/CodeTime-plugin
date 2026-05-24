@@ -2,7 +2,7 @@
 
 `CodeTime-plugin` 是适用于 Yunzai-Bot 的 CodeTime 查询插件，支持账号绑定、编程时间统计、多维统计、公开排行榜、时间分布、最近日志以及 AI Agent 使用统计。
 
-插件命令统一使用 `#ct` / `#ctai` 前缀，使用查询功能前需要先绑定 CodeTime 登录态。
+插件命令统一使用 `#ct` / `#ctai` 前缀，使用查询功能前需要先绑定 CodeTime token。
 
 ## 安装插件
 
@@ -18,7 +18,7 @@ git clone https://github.com/QingYingX-Bot/CodeTime-plugin.git ./plugins/CodeTim
 
 ### 账号绑定
 
-- `#ct绑定 <cookie>`：绑定 CodeTime 账号
+- `#ct绑定 <token>`：绑定 CodeTime 账号
 - `#ct绑定列表`：查看绑定列表
 - `#ct账号列表`：查看绑定列表
 - `#ct切换绑定 <序号>`：切换当前使用的绑定账号
@@ -73,7 +73,7 @@ CodeTime-plugin/
 
 ## 注意事项
 
-- 绑定信息存储在 Redis：`CODETIME:USER:{QQ}`。
+- 绑定信息存储在 Redis：`CODETIME:USER:{QQ}`，其中鉴权字段为 `token`。
 - CodeTime 免费计划查询超过可用范围时，插件会按接口规则回退到 `limit` 或 `days` 查询。
 - 图片卡片统一使用 `resources/template/card.html` 和 `resources/common/codetime.css` 渲染。
 - 更详细的命令参数和接口对应关系见 [bot.md](./bot.md)。

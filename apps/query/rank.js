@@ -129,10 +129,10 @@ function findSelfEntry(entries = [], account = {}) {
 }
 
 async function getSelfRankIfNeeded(account, entries = [], scope = {}) {
-  if (!account?.cookie || findSelfEntry(entries, account)) return null
+  if (!account?.token || findSelfEntry(entries, account)) return null
 
   try {
-    return await new CodeTimeApi(account.cookie).getOverallRank({ days: scope.days })
+    return await new CodeTimeApi(account.token).getOverallRank({ days: scope.days })
   } catch (err) {
     logger.debug?.(`[CodeTime] 获取本人排名失败: ${err.message}`)
     return null

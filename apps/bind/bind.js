@@ -23,11 +23,11 @@ export class bind extends plugin {
   }
 
   async bind(e) {
-    const cookie = this.getMsg(e).replace(/^#ct绑定\s+/i, '').trim()
-    if (!cookie) return e.reply('请发送：#ct绑定 [cookie]', true)
+    const token = this.getMsg(e).replace(/^#ct绑定\s+/i, '').trim()
+    if (!token) return e.reply('请发送：#ct绑定 [token]', true)
 
     try {
-      const account = await bindAccount(e.user_id, cookie)
+      const account = await bindAccount(e.user_id, token)
       return e.reply(`绑定成功\n昵称：${account.username || '未知'}\nID：${account.id}`, true)
     } catch (err) {
       logger.error(`[CodeTime] 绑定失败: ${err}`)
@@ -37,7 +37,7 @@ export class bind extends plugin {
 
   async accountList(e) {
     const accounts = await getAccounts(e.user_id)
-    if (accounts.length === 0) return e.reply('暂无绑定账号，请发送 #ct绑定 [cookie]', true)
+    if (accounts.length === 0) return e.reply('暂无绑定账号，请发送 #ct绑定 [token]', true)
 
     const lines = ['CodeTime 绑定列表']
     accounts.forEach((account, index) => {

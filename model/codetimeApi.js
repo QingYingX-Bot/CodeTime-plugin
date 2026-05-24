@@ -10,20 +10,20 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-function normalizeCookie(cookie = '') {
-  return String(cookie || '').trim()
+function normalizeToken(token = '') {
+  return String(token || '').trim().replace(/^Bearer\s+/i, '').trim()
 }
 
 function normalizeAccount(account = {}) {
-  const cookie = normalizeCookie(account.cookie)
-  if (!cookie) return null
+  const token = normalizeToken(account.token)
+  if (!token) return null
 
   return {
     id: account.id,
     username: account.username || account.email || String(account.id || ''),
     avatar: account.avatar || '',
     timezone: account.timezone || DEFAULT_TZ,
-    cookie,
+    token,
     bindTime: account.bindTime || nowIso(),
     isPrimary: account.isPrimary === true
   }
@@ -114,8 +114,8 @@ export async function getCurrentAccount(userId) {
   return accounts.find((account) => account.isPrimary) || accounts[0]
 }
 
-export async function bindAccount(userId, cookie) {
-  const api = new CodeTimeApi(cookie)
+export async function bindAccount(userId, token) {
+  const api = new CodeTimeApi(token)
   const user = await api.getSelf()
   const accounts = await getAccounts(userId)
 
@@ -124,7 +124,7 @@ export async function bindAccount(userId, cookie) {
     username: user.username,
     avatar: user.avatar,
     timezone: user.timezone || DEFAULT_TZ,
-    cookie,
+    token,
     bindTime: nowIso(),
     isPrimary: accounts.length === 0
   })
@@ -168,8 +168,8 @@ export async function deleteAccount(userId, index) {
 }
 
 export class CodeTimeApi {
-  constructor(cookie = '') {
-    this.cookie = normalizeCookie(cookie)
+  constructor(token = '') {
+    this.token = normalizeToken(token)
   }
 
   buildUrl(path, query = {}) {
@@ -185,7 +185,7 @@ export class CodeTimeApi {
     const headers = {
       accept: 'application/json'
     }
-    if (this.cookie) headers.cookie = this.cookie
+    if (this.token) headers.Authorization = `Bearer ${this.token}`
 
     try {
       const response = await axios.get(this.buildUrl(path, query), {
@@ -199,7 +199,7 @@ export class CodeTimeApi {
       }
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error('鉴权失败，请确认 cookie 是否有效')
+        throw new Error('鉴权失败，请确认 token 是否有效')
       }
 
       if (response.status < 200 || response.status >= 300) {
@@ -219,7 +219,7 @@ export class CodeTimeApi {
         if (isPlanLimitError(err.response?.data)) {
           throw new Error('请升级订阅计划')
         }
-        throw new Error('鉴权失败，请确认 cookie 是否有效')
+        throw new Error('鉴权失败，请确认 token 是否有效')
       }
 
       if (err.code === 'ECONNABORTED') {

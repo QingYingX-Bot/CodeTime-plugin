@@ -18,7 +18,13 @@
 
 ### 1.2 鉴权说明
 
-HAR 中未出现 `Authorization` 或 `Cookie` 请求头，但以下接口属于当前用户数据接口，实际调用时应依赖站点登录态或服务端鉴权：
+当前用户数据接口使用 Bearer token 鉴权：
+
+```http
+Authorization: Bearer <token>
+```
+
+以下接口属于当前用户数据接口，调用时需要携带该请求头：
 
 - `/v3/users/self/*`
 - `/v3/agent/*`

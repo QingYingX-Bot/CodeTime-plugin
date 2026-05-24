@@ -21,7 +21,7 @@ export class help extends plugin {
         {
           title: '账号绑定',
           items: [
-            { name: '#ct绑定 <cookie>' },
+            { name: '#ct绑定 <token>' },
             { name: '#ct绑定列表 / #ct账号列表' },
             { name: '#ct切换绑定 <序号> / #ct切换账号 <序号>' },
             { name: '#ct删除绑定 <序号> / #ct删除账号 <序号>' }

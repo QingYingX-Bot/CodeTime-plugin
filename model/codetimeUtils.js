@@ -147,14 +147,14 @@ export function getCalendarTimeWindow(scope = '日') {
 export async function getApiContext(e) {
   const account = await getCurrentAccount(e.user_id)
   if (!account) {
-    e.reply('请先发送 #ct绑定 [cookie] 绑定 CodeTime 账号', true)
+    e.reply('请先发送 #ct绑定 [token] 绑定 CodeTime 账号', true)
     return null
   }
 
   return {
     account,
     tz: account.timezone || getDefaultTimezone(),
-    api: new CodeTimeApi(account.cookie)
+    api: new CodeTimeApi(account.token)
   }
 }
 

@@ -1,6 +1,6 @@
 # CodeTime Bot 命令
 
-所有命令使用 `#ct` 前缀。需要用户先通过 `#ct绑定 [cookie]` 绑定 CodeTime 登录态。
+所有命令使用 `#ct` 前缀。需要用户先通过 `#ct绑定 [token]` 绑定 CodeTime token。
 
 ## 资料
 
