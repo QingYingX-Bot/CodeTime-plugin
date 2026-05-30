@@ -7,17 +7,33 @@
   <link rel="stylesheet" href="{{ResPath}}common/codetime.css" />
 </head>
 <body>
-  <div class="page">
-    <div class="hero">
-      <h1 class="title">{{title}}</h1>
-      <div class="subtitle">{{subtitle}}</div>
-      <div class="badges">{{@ badgesHtml}}</div>
-    </div>
+  <main class="ct-shell">
+    <div class="ct-frame">
+      <div class="ct-stripes" aria-hidden="true"></div>
+      <header class="hero">
+        <div class="hero-main">
+          <div class="hero-kicker">
+            <span class="brand-dot"></span>
+            <span>CodeTime</span>
+            <span class="hero-type">{{typeLabel}}</span>
+          </div>
+          <h1 class="title">{{title}}</h1>
+          <div class="subtitle">{{subtitle}}</div>
+        </div>
+        <div class="hero-aside">
+          <div class="stamp">{{generatedAt}}</div>
+          <div class="badges">{{@ badgesHtml}}</div>
+        </div>
+      </header>
+      <div class="ct-stripes" aria-hidden="true"></div>
 
-    {{@ metricsBlockHtml}}
-    {{@ sectionsHtml}}
-    {{@ sessionsHtml}}
-    <div class="footer">CodeTime-plugin</div>
-  </div>
+      <div class="content">
+        {{@ metricsBlockHtml}}
+        {{@ sectionsHtml}}
+        {{@ sessionsHtml}}
+        <div class="footer">CodeTime-plugin · rendered from codetime.dev</div>
+      </div>
+    </div>
+  </main>
 </body>
 </html>

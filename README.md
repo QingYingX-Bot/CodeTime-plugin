@@ -29,6 +29,7 @@ git clone https://github.com/QingYingX-Bot/CodeTime-plugin.git ./plugins/CodeTim
 ### CodeTime 查询
 
 - `#ct帮助`：查看帮助
+- `#ct概览 / #ct(日|周|月|年)概览`：按网页概览页口径聚合编程趋势、语言、项目与活跃时间分布
 - `#ct今日`：查看今日编程与 AI 概览
 - `#ct(我的)?资料`：查看当前绑定账号资料
 - `#ct(近期|最近)?日志 <个数>`：查看最近编码日志，默认 `5` 条
@@ -63,6 +64,7 @@ CodeTime-plugin/
 `apps/query` 中主要命令文件：
 
 - `today.js`：`#ct今日`
+- `overview.js`：网页概览风格聚合卡片
 - `rank.js`：公开排行榜
 - `time.js`：编程时长
 - `detail.js`：语言 / 项目详情

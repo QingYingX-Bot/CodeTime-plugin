@@ -1,10 +1,14 @@
 import puppeteer from '../../../lib/puppeteer/puppeteer.js'
+import fs from 'node:fs'
 import { formatNumber, getDefaultTimezone } from './codetimeApi.js'
 
 export async function renderCodeTimeCard(name, data = {}) {
   const page = buildRenderPage({ type: name, ...(data.view || {}) })
+  const renderName = `CodeTime-plugin/${name}`
 
-  return puppeteer.screenshot(`CodeTime-plugin/${name}`, {
+  fs.mkdirSync(`./temp/html/${renderName}`, { recursive: true })
+
+  return puppeteer.screenshot(renderName, {
     tplFile: `${process.cwd()}/plugins/CodeTime-plugin/resources/template/card.html`,
     ResPath: `${process.cwd().replace(/\\/g, '/')}/plugins/CodeTime-plugin/resources/`,
     saveId: data.saveId || name,
@@ -35,6 +39,7 @@ function renderMetrics(items = []) {
       <div class="metric">
         <div class="metric-label">${escapeHtml(item.label)}</div>
         <div class="metric-value">${escapeHtml(item.value)}</div>
+        ${item.sub || item.meta ? `<div class="metric-sub">${escapeHtml(item.sub || item.meta)}</div>` : ''}
       </div>
     `)
     .join('')
@@ -44,7 +49,7 @@ function formatChartLabel(hour, minute = 0) {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
-function normalizeChartPoints(points = []) {
+function normalizeHourlyPoints(points = []) {
   const map = new Map()
   for (const item of points || []) {
     const hour = Math.max(0, Math.min(23, Number(item.hour || 0)))
@@ -58,54 +63,130 @@ function normalizeChartPoints(points = []) {
   }))
 }
 
+function normalizeDistributionSeries(points = [], interval = 10) {
+  const minuteMap = new Map()
+  for (const item of points || []) {
+    const hour = Math.max(0, Math.min(23, Number(item.hour || 0)))
+    const minute = Math.max(0, Math.min(59, Number(item.minute || 0)))
+    const key = hour * 60 + minute
+    minuteMap.set(key, (minuteMap.get(key) || 0) + Number(item.count || 0))
+  }
+
+  if (minuteMap.size === 0) {
+    return []
+  }
+
+  const filled = Array.from({ length: 1440 }, (_, time) => ({
+    time,
+    count: minuteMap.get(time) || 0
+  }))
+  const aggregated = []
+  for (let i = 0; i < filled.length; i += interval) {
+    const chunk = filled.slice(i, i + interval)
+    const count = Math.max(0, ...chunk.map(item => item.count))
+    aggregated.push({ time: i, count })
+  }
+  const max = Math.max(1, ...aggregated.map(item => item.count))
+  return aggregated.map(item => ({
+    ...item,
+    ratio: item.count / max
+  }))
+}
+
+function renderDistributionLine(series = [], {
+  left,
+  graphWidth,
+  top,
+  graphHeight,
+  baseY,
+  className = 'chart-line',
+  opacity = 1,
+  area = false
+} = {}) {
+  if (series.length === 0) return ''
+  const coords = series.map((item) => {
+    const x = left + (graphWidth * item.time) / 1439
+    const y = baseY - graphHeight * Math.max(0, Math.min(1, Number(item.ratio || 0)))
+    return { ...item, x, y }
+  })
+  const linePoints = coords.map(item => `${item.x.toFixed(1)},${item.y.toFixed(1)}`).join(' ')
+  const areaPoints = `${left},${baseY.toFixed(1)} ${linePoints} ${(left + graphWidth).toFixed(1)},${baseY.toFixed(1)}`
+  return `
+    ${area ? `<polygon class="chart-area" points="${areaPoints}" />` : ''}
+    <polyline class="${className}" style="opacity:${Number(opacity).toFixed(2)}" points="${linePoints}" />
+  `
+}
+
 function renderTimeDistribution(section = {}) {
-  const points = normalizeChartPoints(section.points || section.items)
-  if (points.length === 0) return ''
-  const max = Math.max(1, ...points.map((item) => item.count))
+  const interval = Math.max(1, Number(section.interval || 10))
+  const summary = normalizeDistributionSeries(section.summaryPoints || section.points || section.items, interval)
+  const segments = (section.segments || [])
+    .map((segment, index) => ({
+      ...segment,
+      series: normalizeDistributionSeries(segment.points || segment.items || segment.data, interval),
+      opacity: segment.opacity ?? Math.max(0.28, 0.72 - index * 0.12)
+    }))
+    .filter(segment => segment.series.length > 0)
+
+  if (summary.length === 0 && segments.length === 0) {
+    const hourly = normalizeHourlyPoints(section.points || section.items)
+    if (hourly.every(item => item.count <= 0)) return ''
+  }
+
   const width = 760
   const height = 220
-  const left = 28
+  const left = 32
   const right = 22
   const top = 28
   const bottom = 34
   const graphWidth = width - left - right
   const graphHeight = height - top - bottom
   const baseY = top + graphHeight
-  const coords = points.map((item) => {
-    const x = left + (graphWidth * item.hour) / 23
-    const y = baseY - (graphHeight * item.count) / max
-    return { ...item, x, y }
-  })
-  const peak = coords.reduce((prev, item) => item.count > prev.count ? item : prev, coords[0])
-  const chartCoords = [
-    { x: left, y: baseY },
-    ...coords,
-    { x: left + graphWidth, y: baseY }
-  ]
-  const linePoints = chartCoords.map((item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`).join(' ')
-  const areaPoints = `${linePoints}`
-  const labels = [0, 3, 6, 10, 13, 16, 20, 23]
-  const peakLabel = formatChartLabel(peak.hour, peak.minute)
+  const mainSeries = summary.length > 0 ? summary : segments[0]?.series || []
+  const peak = mainSeries.reduce((prev, item) => item.count > prev.count ? item : prev, mainSeries[0] || { time: 0, count: 0, ratio: 0 })
+  const labels = [0, 360, 720, 1080, 1439]
+  const peakHour = Math.floor(Number(peak.time || 0) / 60)
+  const peakMinute = Number(peak.time || 0) % 60
+  const peakX = left + (graphWidth * Number(peak.time || 0)) / 1439
+  const peakLabel = formatChartLabel(peakHour, peakMinute)
 
   return `
     <div class="section chart-section">
       <div class="chart-head">
         <div class="chart-title">${escapeHtml(section.title || '编程时间分布')}</div>
+        <div class="section-meta">${escapeHtml(section.meta || `${interval}m · density`)}</div>
       </div>
       <svg class="distribution-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '编程时间分布')}">
         ${[0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = baseY - graphHeight * ratio
           return `<line class="chart-grid-line" x1="${left}" y1="${y.toFixed(1)}" x2="${left + graphWidth}" y2="${y.toFixed(1)}" />`
         }).join('')}
-        <polygon class="chart-area" points="${areaPoints}" />
-        <polyline class="chart-line" points="${linePoints}" />
+        ${segments.map(segment => renderDistributionLine(segment.series, {
+          left,
+          graphWidth,
+          top,
+          graphHeight,
+          baseY,
+          className: 'chart-line chart-line-muted',
+          opacity: segment.opacity
+        })).join('')}
+        ${renderDistributionLine(summary, {
+          left,
+          graphWidth,
+          top,
+          graphHeight,
+          baseY,
+          className: 'chart-line',
+          opacity: 1,
+          area: true
+        })}
         ${peak.count > 0 ? `
-          <line class="chart-peak-line" x1="${peak.x.toFixed(1)}" y1="${top}" x2="${peak.x.toFixed(1)}" y2="${baseY}" />
-          <text class="chart-peak-label" x="${(peak.x + 8).toFixed(1)}" y="${(top + 10).toFixed(1)}">${peakLabel}</text>
+          <line class="chart-peak-line" x1="${peakX.toFixed(1)}" y1="${top}" x2="${peakX.toFixed(1)}" y2="${baseY}" />
+          <text class="chart-peak-label" x="${(peakX + 8).toFixed(1)}" y="${(top + 10).toFixed(1)}">${peakLabel}</text>
         ` : ''}
-        ${labels.map((hour) => {
-          const x = left + (graphWidth * hour) / 23
-          return `<text class="chart-axis-label" x="${x.toFixed(1)}" y="${height - 8}">${formatChartLabel(hour, 0)}</text>`
+        ${labels.map((minuteOfDay) => {
+          const x = left + (graphWidth * minuteOfDay) / 1439
+          return `<text class="chart-axis-label" x="${x.toFixed(1)}" y="${height - 8}">${formatChartLabel(Math.floor(minuteOfDay / 60), minuteOfDay % 60)}</text>`
         }).join('')}
       </svg>
     </div>
@@ -379,7 +460,7 @@ function renderColumnChart(section = {}) {
           const barHeight = value <= 0 ? 0 : Math.max(2, (value / max) * graphHeight)
           const x = left + slotWidth * index + (slotWidth - barWidth) / 2
           const y = baseY - barHeight
-          return `<rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}"><title>${escapeHtml(item.label || '')} ${escapeHtml(item.valueText ?? value)}</title></rect>`
+          return `<rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2"><title>${escapeHtml(item.label || '')} ${escapeHtml(item.valueText ?? value)}</title></rect>`
         }).join('')}
         <line class="chart-axis-line" x1="${left}" y1="${baseY}" x2="${left + graphWidth}" y2="${baseY}" />
         ${items.map((item, index) => {
@@ -388,6 +469,127 @@ function renderColumnChart(section = {}) {
           return `<text class="chart-axis-label" x="${x.toFixed(1)}" y="${height - 12}">${escapeHtml(item.label || '')}</text>`
         }).join('')}
       </svg>
+    </div>
+  `
+}
+
+function movingAverage(items = [], windowSize = 7) {
+  return items.map((item, index) => {
+    const start = Math.max(0, index - windowSize + 1)
+    const slice = items.slice(start, index + 1)
+    const avg = slice.reduce((sum, row) => sum + Number(row.value || 0), 0) / Math.max(1, slice.length)
+    return { ...item, value: avg }
+  })
+}
+
+function renderTrendChart(section = {}) {
+  const items = (section.items || [])
+    .map(item => ({
+      label: String(item.label || item.time || '').slice(5, 10) || String(item.label || ''),
+      value: Number(item.value ?? item.duration ?? item.minutes ?? 0)
+    }))
+    .filter(item => item.label)
+
+  if (items.length === 0) return ''
+
+  const width = 760
+  const height = 240
+  const left = 44
+  const right = 22
+  const top = 24
+  const bottom = 42
+  const graphWidth = width - left - right
+  const graphHeight = height - top - bottom
+  const baseY = top + graphHeight
+  const max = Math.max(1, ...items.map(item => item.value))
+  const smooth = movingAverage(items, Math.min(7, Math.max(2, items.length)))
+  const xFor = index => left + (items.length === 1 ? graphWidth / 2 : (graphWidth * index) / (items.length - 1))
+  const yFor = value => baseY - (graphHeight * Math.max(0, Number(value || 0))) / max
+  const linePoints = smooth.map((item, index) => `${xFor(index).toFixed(1)},${yFor(item.value).toFixed(1)}`).join(' ')
+  const areaPoints = `${left},${baseY.toFixed(1)} ${linePoints} ${(left + graphWidth).toFixed(1)},${baseY.toFixed(1)}`
+  const labelStep = Math.max(1, Math.ceil(items.length / 8))
+
+  return `
+    <div class="section chart-section">
+      <div class="chart-head">
+        <div class="chart-title">${escapeHtml(section.title || '编程趋势')}</div>
+        ${section.meta ? `<div class="section-meta">${escapeHtml(section.meta)}</div>` : ''}
+      </div>
+      <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '编程趋势')}">
+        ${[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+          const y = baseY - graphHeight * ratio
+          return `
+            <line class="chart-grid-line" x1="${left}" y1="${y.toFixed(1)}" x2="${left + graphWidth}" y2="${y.toFixed(1)}" />
+            <text class="chart-axis-y" x="${left - 8}" y="${(y + 4).toFixed(1)}">${compactAxisValue(max * ratio)}</text>
+          `
+        }).join('')}
+        <polygon class="chart-area" points="${areaPoints}" />
+        <polyline class="chart-line" points="${linePoints}" />
+        ${items.map((item, index) => {
+          const x = xFor(index)
+          const y = yFor(item.value)
+          return `<circle class="trend-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${item.value > 0 ? 2.6 : 1.7}"><title>${escapeHtml(item.label)} ${escapeHtml(formatNumber(item.value))}</title></circle>`
+        }).join('')}
+        <line class="chart-axis-line" x1="${left}" y1="${baseY}" x2="${left + graphWidth}" y2="${baseY}" />
+        ${items.map((item, index) => {
+          if (index % labelStep !== 0 && index !== items.length - 1) return ''
+          return `<text class="chart-axis-label" x="${xFor(index).toFixed(1)}" y="${height - 10}">${escapeHtml(item.label)}</text>`
+        }).join('')}
+      </svg>
+    </div>
+  `
+}
+
+function renderCategoryHeatmap(section = {}) {
+  const raw = Array.isArray(section.items) ? section.items : []
+  if (raw.length === 0) return ''
+
+  const dateSet = new Set()
+  const categoryTotals = new Map()
+  for (const item of raw) {
+    const date = String(item.time || item.date || '').slice(0, 10)
+    const by = String(item.by || item.name || item.field || '未知')
+    if (!date || !by) continue
+    dateSet.add(date)
+    categoryTotals.set(by, (categoryTotals.get(by) || 0) + Number(item.duration || item.minutes || item.value || 0))
+  }
+
+  const dates = [...dateSet].sort()
+  const categories = [...categoryTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Number(section.limit || 8))
+    .map(([name]) => name)
+  if (dates.length === 0 || categories.length === 0) return ''
+
+  const valueMap = new Map()
+  for (const item of raw) {
+    const date = String(item.time || item.date || '').slice(0, 10)
+    const by = String(item.by || item.name || item.field || '未知')
+    if (!categories.includes(by)) continue
+    const key = `${date}__${by}`
+    valueMap.set(key, (valueMap.get(key) || 0) + Number(item.duration || item.minutes || item.value || 0))
+  }
+  const max = Math.max(1, ...valueMap.values())
+  const labelStep = Math.max(1, Math.ceil(dates.length / 8))
+
+  return `
+    <div class="section">
+      <div class="section-title">
+        <span>${escapeHtml(section.title || '分类趋势')}</span>
+        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
+      </div>
+      <div class="matrix" style="--matrix-cols:${dates.length}">
+        <div class="matrix-corner"></div>
+        ${dates.map((date, index) => `<div class="matrix-date">${index % labelStep === 0 || index === dates.length - 1 ? escapeHtml(date.slice(5)) : ''}</div>`).join('')}
+        ${categories.map(category => `
+          <div class="matrix-label">${escapeHtml(category)}</div>
+          ${dates.map((date) => {
+            const value = valueMap.get(`${date}__${category}`) || 0
+            const level = value <= 0 ? 0 : Math.max(1, Math.ceil((value / max) * 5))
+            return `<div class="matrix-cell matrix-l${level}" title="${escapeHtml(category)} ${escapeHtml(date)} ${escapeHtml(formatNumber(value))}"></div>`
+          }).join('')}
+        `).join('')}
+      </div>
     </div>
   `
 }
@@ -437,9 +639,16 @@ function renderSection(section = {}) {
   if (section.type === 'leaderboard') return renderLeaderboard(section)
   if (section.type === 'bar-chart') return renderBarChart(section)
   if (section.type === 'column-chart') return renderColumnChart(section)
+  if (section.type === 'trend-chart') return renderTrendChart(section)
+  if (section.type === 'category-heatmap') return renderCategoryHeatmap(section)
   if (section.type === 'heatmap') return renderHeatmap(section)
 
-  const title = `<div class="section-title">${escapeHtml(section.title)}</div>`
+  const title = `
+    <div class="section-title">
+      <span>${escapeHtml(section.title || '')}</span>
+      ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
+    </div>
+  `
 
   if (section.type === 'chips') {
     const chips = (section.items || [])
@@ -475,6 +684,7 @@ function buildRenderPage(view = {}) {
   const defaultTitle = {
     help: 'CodeTime 帮助',
     today: 'CodeTime 今日',
+    overview: 'CodeTime 概览',
     agent: 'CodeTime AI 统计',
     sessions: 'CodeTime AI 记录',
     distribution: 'CodeTime 时间分布',
@@ -483,6 +693,7 @@ function buildRenderPage(view = {}) {
   const defaultSubtitle = {
     help: '绑定账号后可查询编程统计、多维统计、日志和 AI Agent 使用记录。',
     today: '今日数据总览',
+    overview: '与网页概览页一致的编程趋势、语言、项目和时间分布聚合。',
     agent: '按日、周、月、年查看 AI 统计',
     sessions: '最新 AI 会话记录',
     distribution: '按小时查看编程活跃分布',
@@ -490,11 +701,29 @@ function buildRenderPage(view = {}) {
   }
   const title = view.title || defaultTitle[view.type] || ''
   const metricsHtml = renderMetrics(view.metrics)
+  const typeLabel = {
+    help: 'GUIDE',
+    today: 'TODAY',
+    overview: 'OVERVIEW',
+    agent: 'AGENT',
+    sessions: 'SESSIONS',
+    distribution: 'DISTRIBUTION',
+    rank: 'LEADERBOARD'
+  }[view.type] || 'REPORT'
 
   return {
     pageTitle: title,
+    typeLabel,
     title,
     subtitle: view.subtitle || defaultSubtitle[view.type] || '',
+    generatedAt: new Date().toLocaleString('zh-CN', {
+      timeZone: getDefaultTimezone(),
+      hour12: false,
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }),
     badgesHtml: renderBadges(view.badges),
     metricsBlockHtml: metricsHtml ? `<div class="grid">${metricsHtml}</div>` : '',
     sectionsHtml: renderSections(view.sections),

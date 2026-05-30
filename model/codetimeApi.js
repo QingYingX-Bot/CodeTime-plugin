@@ -269,11 +269,12 @@ export class CodeTimeApi {
     return this.request('/users/self/overall-rank', { days })
   }
 
-  getTimeDistribution({ startTime, endTime, tz = DEFAULT_TZ } = {}) {
+  getTimeDistribution({ startTime, endTime, tz = DEFAULT_TZ, days } = {}) {
     return this.request('/users/self/time-distribution', {
       start_time: startTime,
       end_time: endTime,
-      tz
+      tz,
+      days
     })
   }
 

@@ -64,6 +64,28 @@
 - `by`，仅 `stats` 接口携带
 - `since` / `until`，仅 `agent/dashboard` 接口携带
 
+## 编程概览
+
+`#ct概览` -> 聚合网页概览页核心数据，默认月范围
+
+`#ct(日|周|月|年)概览` -> 聚合指定周期数据
+
+聚合以下接口：
+
+- `/v3/users/self/stats_time`
+- `/v3/users/self/stats?by=language`
+- `/v3/users/self/stats?by=workspace`
+- `/v3/users/self/time-distribution`
+
+渲染内容对齐 web 概览页的核心模块：
+
+- 编程趋势：按日 `stats_time` 绘制 7 日窗口趋势线
+- 语言趋势：按日期和语言绘制密度矩阵
+- 项目趋势：按日期和项目绘制密度矩阵
+- 活跃时间分布：按分钟分布聚合，补充最近 5 段历史线
+
+免费计划超出 90 天时会自动回退到最近 90 天窗口。
+
 ## 帮助
 
 `#ct帮助`

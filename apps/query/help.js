@@ -31,6 +31,7 @@ export class help extends plugin {
           title: 'CodeTime 查询',
           items: [
             { name: '#ct帮助' },
+            { name: '#ct概览 / #ct(日|周|月|年)概览' },
             { name: '#ct今日' },
             { name: '#ct(我的)?资料' },
             { name: '#ct(近期|最近)?日志 <个数>' },
