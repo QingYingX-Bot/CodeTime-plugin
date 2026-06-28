@@ -1,12 +1,14 @@
 import plugin from '../../../../lib/plugins/plugin.js'
 import { formatMinutes, getDefaultTimezone } from '../../model/codetimeApi.js'
 import {
+  buildHeroUser,
   getApiContext,
   getTimeWindow,
   parseTimeScope,
   replyError,
   sumMinutes
 } from '../../model/codetimeUtils.js'
+import { TOP_LABELS } from '../../model/codetimeLabels.js'
 import { formatDateOnly, renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 function parseOverviewScope(message = '') {
@@ -171,7 +173,7 @@ export class overview extends plugin {
         sections.push({
           title: '编程趋势',
           type: 'trend-chart',
-          meta: 'daily · 7d window',
+          meta: '按日 · 7 天窗口',
           items: timeList.map(item => ({
             label: String(item.time || '').slice(0, 10),
             value: Number(item.duration || 0)
@@ -179,18 +181,18 @@ export class overview extends plugin {
         })
       }
       if (languageList.length > 0) {
-        sections.push({ title: '语言 Top', meta: 'duration', items: topRows(languageList) })
-        sections.push({ title: '语言趋势', type: 'category-heatmap', meta: 'language · dots', items: languageList })
+        sections.push({ title: TOP_LABELS.language, meta: '按时长', items: topRows(languageList) })
+        sections.push({ title: '语言趋势', type: 'category-heatmap', meta: '语言 · 热力', items: languageList })
       }
       if (workspaceList.length > 0) {
-        sections.push({ title: '项目 Top', meta: 'duration', items: topRows(workspaceList) })
-        sections.push({ title: '项目趋势', type: 'category-heatmap', meta: 'workspace · dots', items: workspaceList })
+        sections.push({ title: TOP_LABELS.project, meta: '按时长', items: topRows(workspaceList) })
+        sections.push({ title: '项目趋势', type: 'category-heatmap', meta: '项目 · 热力', items: workspaceList })
       }
       if (distributionList.length > 0) {
         sections.push({
           title: '活跃时间分布',
           type: 'time-distribution',
-          meta: 'summary · segments',
+          meta: '汇总 · 分段对比',
           summaryPoints: distributionList,
           segments
         })
@@ -199,14 +201,13 @@ export class overview extends plugin {
       const view = {
         type: 'overview',
         title: `CodeTime ${scope}概览`,
-        subtitle: `账号：${ctx.account.username || '未知'} · ${window.startDate} ~ ${window.endDate}`,
-        badges: ['概览', ctx.tz || getDefaultTimezone(), `${window.days} 天窗口`],
+        user: await buildHeroUser(ctx.account, `${window.startDate} ~ ${window.endDate}`),
         metrics: [
           { label: '总时长', value: formatMinutes(total), sub: `${days} 个活跃日` },
           { label: '日均', value: formatMinutes(total / Math.max(1, window.days)), sub: '按窗口天数' },
           { label: '活跃日均', value: formatMinutes(total / Math.max(1, days)), sub: '仅统计有记录日期' },
-          { label: 'Top 语言', value: topName(languageList) },
-          { label: 'Top 项目', value: topName(workspaceList) },
+          { label: TOP_LABELS.topLanguage, value: topName(languageList) },
+          { label: TOP_LABELS.topProject, value: topName(workspaceList) },
           { label: '时间点', value: `${distributionList.length}`, sub: '活跃分布采样' },
           { label: '语言记录', value: `${languageList.length}` },
           { label: '项目记录', value: `${workspaceList.length}` }
@@ -222,8 +223,8 @@ export class overview extends plugin {
         `账号：${ctx.account.username || '未知'}`,
         `范围：${window.startDate} ~ ${window.endDate}`,
         `总时长：${formatMinutes(total)}`,
-        `Top 语言：${topName(languageList)}`,
-        `Top 项目：${topName(workspaceList)}`
+        `${TOP_LABELS.topLanguage}：${topName(languageList)}`,
+        `${TOP_LABELS.topProject}：${topName(workspaceList)}`
       ].join('\n'), true)
     } catch (err) {
       return replyError(e, err)

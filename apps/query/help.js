@@ -1,4 +1,5 @@
 import plugin from '../../../../lib/plugins/plugin.js'
+import { VIBE_LABELS } from '../../model/codetimeLabels.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 export class help extends plugin {
@@ -43,7 +44,7 @@ export class help extends plugin {
           ]
         },
         {
-          title: 'AI Agent 查询',
+          title: VIBE_LABELS.queryTitle,
           items: [
             { name: '#ctai(日|周|月|年)统计' },
             { name: '#ctai记录 <数量>' }

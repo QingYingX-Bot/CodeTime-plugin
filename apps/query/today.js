@@ -3,9 +3,12 @@ import {
   formatNumber,
   formatDateTime,
   formatMinutes,
+  formatTokenListValue,
+  formatTokenValue,
   getDefaultTimezone
 } from '../../model/codetimeApi.js'
 import {
+  buildHeroUser,
   formatTopItems,
   getApiContext,
   getCalendarTimeWindow,
@@ -13,6 +16,7 @@ import {
   replyError,
   sumMinutes
 } from '../../model/codetimeUtils.js'
+import { TOP_LABELS, VIBE_LABELS } from '../../model/codetimeLabels.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 function formatHourDistribution(items = []) {
@@ -56,32 +60,6 @@ function formatDurationMs(ms = 0) {
   return parts.join('')
 }
 
-function trimDecimals(text) {
-  return String(text).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
-}
-
-function formatTokenValue(value = 0) {
-  const num = Number(value || 0)
-  const abs = Math.abs(num)
-  let scaled = num
-  let unit = ''
-
-  if (abs >= 1e9) {
-    scaled = num / 1e9
-    unit = 'B'
-  } else if (abs >= 1e6) {
-    scaled = num / 1e6
-    unit = 'M'
-  } else if (abs >= 1e3) {
-    scaled = num / 1e3
-    unit = 'K'
-  }
-
-  if (!unit) return formatNumber(num)
-
-  return `${trimDecimals(scaled.toFixed(abs >= 100 ? 0 : abs >= 10 ? 1 : 2))}${unit}(${formatNumber(num)})`
-}
-
 function formatUsd(value = 0) {
   const num = Number(value || 0)
   return `$${num.toFixed(2)}`
@@ -121,7 +99,7 @@ function formatTopList(title, items = [], nameKeys = [], valueKeys = ['totalToke
 function formatModelTop(items = []) {
   if (!Array.isArray(items) || items.length === 0) return []
 
-  const lines = ['模型Top']
+  const lines = [VIBE_LABELS.modelTop]
   items
     .slice()
     .sort((a, b) => getModelTokenCount(b) - getModelTokenCount(a))
@@ -148,7 +126,7 @@ function formatTokenRows(items = [], nameKeys = [], valueKeys = ['totalTokens', 
     .slice(0, limit)
     .map((item, index) => ({
       name: `${index + 1}. ${nameKeys.map((key) => item[key]).find(Boolean) || '未知'}`,
-      value: formatTokenValue(valueKeys.map((key) => Number(item[key] || 0)).find((num) => num > 0) || 0)
+      value: formatTokenListValue(valueKeys.map((key) => Number(item[key] || 0)).find((num) => num > 0) || 0)
     }))
 }
 
@@ -159,7 +137,7 @@ function formatModelRows(items = [], limit = 3) {
     .slice(0, limit)
     .map((item, index) => ({
       name: `${index + 1}. ${item.pricing?.displayName || item.model || '未知'}`,
-      value: formatTokenValue(getModelTokenCount(item))
+      value: formatTokenListValue(getModelTokenCount(item))
     }))
 }
 
@@ -230,12 +208,12 @@ export class today extends plugin {
       ]
 
       if (languageList.length > 0) {
-        lines.push('语言Top')
+        lines.push(TOP_LABELS.language)
         lines.push(formatTopItems(languageList))
       }
 
       if (workspaceList.length > 0) {
-        lines.push('项目Top')
+        lines.push(TOP_LABELS.project)
         lines.push(formatTopItems(workspaceList))
       }
 
@@ -244,34 +222,33 @@ export class today extends plugin {
         lines.push(formatHourDistribution(distributionList))
       }
 
-      lines.push('AI概览')
+      lines.push(VIBE_LABELS.overview)
       lines.push(`会话：${formatNumber(agentSummary.totalSessions || 0)}`)
       lines.push(`Token：${formatTokenValue(agentSummary.totalTokens || 0)}`)
       lines.push(`成本：${formatUsd(sumEstimatedCost(agentData))}`)
       lines.push(`持续时间：${formatDurationMs(agentSummary.totalDurationMs || 0)}`)
       if (agentSources.length > 0) lines.push(`来源：${agentSources.join('、')}`)
-      lines.push(...formatTopList('项目Top', agentData?.projectTokens, ['project', 'name']))
+      lines.push(...formatTopList(TOP_LABELS.project, agentData?.projectTokens, ['project', 'name']))
       lines.push(...formatModelTop(agentData?.modelCosts))
-      lines.push(...formatTopList('Agent Top', agentData?.agentCosts, ['source', 'agent', 'name']))
+      lines.push(...formatTopList(VIBE_LABELS.agentTop, agentData?.agentCosts, ['source', 'agent', 'name']))
 
       const sections = []
-      if (languageList.length > 0) sections.push({ title: '语言 Top', items: formatDurationRows(languageList) })
-      if (workspaceList.length > 0) sections.push({ title: '项目 Top', items: formatDurationRows(workspaceList) })
+      if (languageList.length > 0) sections.push({ title: TOP_LABELS.language, items: formatDurationRows(languageList) })
+      if (workspaceList.length > 0) sections.push({ title: TOP_LABELS.project, items: formatDurationRows(workspaceList) })
       if (distributionList.length > 0) sections.push({ title: '时间分布', type: 'time-distribution', points: distributionList })
-      if ((agentData?.projectTokens || []).length > 0) sections.push({ title: 'AI 项目 Top', items: formatTokenRows(agentData.projectTokens, ['project', 'name']) })
-      if ((agentData?.modelCosts || []).length > 0) sections.push({ title: 'AI 模型 Top', items: formatModelRows(agentData.modelCosts) })
-      if ((agentData?.agentCosts || []).length > 0) sections.push({ title: 'AI Agent Top', items: formatTokenRows(agentData.agentCosts, ['source', 'agent', 'name']) })
+      if ((agentData?.projectTokens || []).length > 0) sections.push({ title: VIBE_LABELS.projectTop, items: formatTokenRows(agentData.projectTokens, ['project', 'name']) })
+      if ((agentData?.modelCosts || []).length > 0) sections.push({ title: VIBE_LABELS.modelTop, items: formatModelRows(agentData.modelCosts) })
+      if ((agentData?.agentCosts || []).length > 0) sections.push({ title: VIBE_LABELS.agentTop, items: formatTokenRows(agentData.agentCosts, ['source', 'agent', 'name']) })
 
       const view = {
-        title: 'CodeTime 今日',
-        subtitle: `账号：${ctx.account.username || '未知'} · 日期：${formatDateTime(range.startTime).slice(0, 10)}`,
-        badges: ['今日总览', ctx.tz || getDefaultTimezone()],
+        title: 'CodeTime Today',
+        user: await buildHeroUser(ctx.account, `日期：${formatDateTime(range.startTime).slice(0, 10)}`),
         metrics: [
           { label: '编程总时长', value: formatMinutes(sumMinutes(timeList)) },
-          { label: 'AI 会话', value: formatNumber(agentSummary.totalSessions || 0) },
-          { label: 'AI Token', value: formatTokenValue(agentSummary.totalTokens || 0) },
-          { label: 'AI 成本', value: formatUsd(sumEstimatedCost(agentData)) },
-          { label: 'AI 时长', value: formatDurationMs(agentSummary.totalDurationMs || 0) },
+          { label: VIBE_LABELS.sessions, value: formatNumber(agentSummary.totalSessions || 0) },
+          { label: VIBE_LABELS.token, value: formatTokenValue(agentSummary.totalTokens || 0) },
+          { label: VIBE_LABELS.cost, value: formatUsd(sumEstimatedCost(agentData)) },
+          { label: VIBE_LABELS.duration, value: formatDurationMs(agentSummary.totalDurationMs || 0) },
           { label: '工具调用', value: formatNumber(agentSummary.totalToolCalls || 0) },
           { label: '事件', value: formatNumber(agentSummary.totalEvents || 0) },
           { label: '代码变更', value: `+${formatNumber(agentSummary.totalLinesAdded || 0)} / -${formatNumber(agentSummary.totalLinesRemoved || 0)}` }

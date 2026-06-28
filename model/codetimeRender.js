@@ -1,16 +1,35 @@
-import puppeteer from '../../../lib/puppeteer/puppeteer.js'
 import fs from 'node:fs'
-import { formatNumber, getDefaultTimezone } from './codetimeApi.js'
+import { formatNumber, formatTokenValue, getDefaultTimezone } from './codetimeApi.js'
+
+export { formatTokenValue } from './codetimeApi.js'
+import {
+  buildListAccentBackground,
+  getLanguageIconUrl,
+  isLanguageSection,
+  normalizeListName,
+  resolveLanguageProfile,
+  THEME_COLOR
+} from './codetimeLanguages.js'
+import { formatDistributionMeta, formatSectionMeta, VIBE_LABELS } from './codetimeLabels.js'
 
 export async function renderCodeTimeCard(name, data = {}) {
-  const page = buildRenderPage({ type: name, ...(data.view || {}) })
+  const { default: puppeteer } = await import('../../../lib/puppeteer/puppeteer.js')
+  const resPath = `${process.cwd().replace(/\\/g, '/')}/plugins/CodeTime-plugin/resources/`
+  const page = buildRenderPage({ type: name, resPath, ...(data.view || {}) })
   const renderName = `CodeTime-plugin/${name}`
+  const tplPath = `${process.cwd()}/plugins/CodeTime-plugin/resources/template/card.html`
+  const template = fs.readFileSync(tplPath, 'utf8')
+  const htmlFile = `${process.cwd()}/temp/html/${renderName}/render.html`
 
   fs.mkdirSync(`./temp/html/${renderName}`, { recursive: true })
+  fs.writeFileSync(htmlFile, applyTemplate(template, {
+    ResPath: resPath,
+    ...page
+  }), 'utf8')
 
   return puppeteer.screenshot(renderName, {
-    tplFile: `${process.cwd()}/plugins/CodeTime-plugin/resources/template/card.html`,
-    ResPath: `${process.cwd().replace(/\\/g, '/')}/plugins/CodeTime-plugin/resources/`,
+    tplFile: htmlFile,
+    ResPath: resPath,
     saveId: data.saveId || name,
     ...data,
     ...page
@@ -26,11 +45,52 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;')
 }
 
-function renderBadges(items = []) {
-  return (items || [])
-    .filter((item) => item !== undefined && item !== null && item !== '')
-    .map((item) => `<span class="badge">${escapeHtml(item)}</span>`)
-    .join('')
+export function applyTemplate(template, data = {}) {
+  let html = template
+  for (const [key, value] of Object.entries(data)) {
+    const raw = String(value ?? '')
+    html = html.replaceAll(`{{@ ${key}}}`, raw)
+    html = html.replaceAll(`{{@${key}}}`, raw)
+    html = html.replaceAll(`{{${key}}}`, escapeHtml(raw))
+  }
+  return html
+}
+
+function renderSectionTitle(title = '', meta = '') {
+  const metaText = formatSectionMeta(meta)
+  const metaHtml = metaText
+    ? `<span class="section-meta">${escapeHtml(metaText)}</span>`
+    : ''
+  return `<div class="section-title">${escapeHtml(title)}${metaHtml}</div>`
+}
+
+function renderChartHead(title = '', meta = '') {
+  const metaText = formatSectionMeta(meta)
+  const metaHtml = metaText
+    ? `<span class="section-meta">${escapeHtml(metaText)}</span>`
+    : ''
+  return `<div class="chart-head"><div class="chart-title">${escapeHtml(title)}</div>${metaHtml}</div>`
+}
+
+function buildHeroUserFields(user = null) {
+  if (!user || (!user.name && !user.meta)) {
+    return {
+      heroAsideClass: ' is-hidden',
+      heroUserInitial: '',
+      heroUserAvatarHtml: '',
+      heroUserName: ''
+    }
+  }
+
+  const initial = String(user.name || '?').trim().slice(0, 1).toUpperCase() || '?'
+  return {
+    heroAsideClass: '',
+    heroUserInitial: initial,
+    heroUserAvatarHtml: user.avatar
+      ? `<img class="hero-avatar-img" src="${escapeHtml(user.avatar)}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.remove()" />`
+      : '',
+    heroUserName: String(user.name || '')
+  }
 }
 
 function renderMetrics(items = []) {
@@ -93,6 +153,48 @@ function normalizeDistributionSeries(points = [], interval = 10) {
   }))
 }
 
+function smoothSeriesRatios(series = [], windowSize = 5) {
+  if (series.length <= 2) return series
+  const half = Math.floor(windowSize / 2)
+  return series.map((item, index) => {
+    const start = Math.max(0, index - half)
+    const end = Math.min(series.length - 1, index + half)
+    const slice = series.slice(start, end + 1)
+    const avgRatio = slice.reduce((sum, row) => sum + Number(row.ratio || 0), 0) / slice.length
+    return { ...item, ratio: avgRatio }
+  })
+}
+
+function buildSmoothLinePath(points = []) {
+  if (points.length === 0) return ''
+  if (points.length === 1) {
+    const point = points[0]
+    return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+  }
+
+  let path = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
+  for (let index = 0; index < points.length - 1; index++) {
+    const p0 = points[Math.max(0, index - 1)]
+    const p1 = points[index]
+    const p2 = points[index + 1]
+    const p3 = points[Math.min(points.length - 1, index + 2)]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+    path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`
+  }
+  return path
+}
+
+function buildSmoothAreaPath(points = [], baseY = 0) {
+  if (points.length === 0) return ''
+  const linePath = buildSmoothLinePath(points)
+  const last = points[points.length - 1]
+  const first = points[0]
+  return `${linePath} L ${last.x.toFixed(1)} ${baseY.toFixed(1)} L ${first.x.toFixed(1)} ${baseY.toFixed(1)} Z`
+}
+
 function renderDistributionLine(series = [], {
   left,
   graphWidth,
@@ -104,16 +206,17 @@ function renderDistributionLine(series = [], {
   area = false
 } = {}) {
   if (series.length === 0) return ''
-  const coords = series.map((item) => {
+  const smoothed = smoothSeriesRatios(series, Math.min(7, Math.max(3, Math.floor(series.length / 12))))
+  const coords = smoothed.map((item) => {
     const x = left + (graphWidth * item.time) / 1439
     const y = baseY - graphHeight * Math.max(0, Math.min(1, Number(item.ratio || 0)))
     return { ...item, x, y }
   })
-  const linePoints = coords.map(item => `${item.x.toFixed(1)},${item.y.toFixed(1)}`).join(' ')
-  const areaPoints = `${left},${baseY.toFixed(1)} ${linePoints} ${(left + graphWidth).toFixed(1)},${baseY.toFixed(1)}`
+  const linePath = buildSmoothLinePath(coords)
+  const areaPath = buildSmoothAreaPath(coords, baseY)
   return `
-    ${area ? `<polygon class="chart-area" points="${areaPoints}" />` : ''}
-    <polyline class="${className}" style="opacity:${Number(opacity).toFixed(2)}" points="${linePoints}" />
+    ${area ? `<path class="chart-area" d="${areaPath}" />` : ''}
+    <path class="${className}" style="opacity:${Number(opacity).toFixed(2)}" d="${linePath}" />
   `
 }
 
@@ -152,10 +255,7 @@ function renderTimeDistribution(section = {}) {
 
   return `
     <div class="section chart-section">
-      <div class="chart-head">
-        <div class="chart-title">${escapeHtml(section.title || '编程时间分布')}</div>
-        <div class="section-meta">${escapeHtml(section.meta || `${interval}m · density`)}</div>
-      </div>
+      ${renderChartHead(section.title || '编程时间分布', section.meta || formatDistributionMeta(interval))}
       <svg class="distribution-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '编程时间分布')}">
         ${[0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = baseY - graphHeight * ratio
@@ -215,10 +315,7 @@ function renderSessionTable(items = []) {
 
   return `
     <div class="section">
-      <div class="section-title">
-        <span>会话 · 列表</span>
-        <span class="section-meta">已加载 ${escapeHtml(items.length)} 条</span>
-      </div>
+      ${renderSectionTitle('会话 · 列表', `已加载 ${items.length} 条`)}
       <div class="table-wrap">
         <table class="data-table session-table">
           <thead>
@@ -261,10 +358,7 @@ function renderGenericTable(section = {}) {
 
   return `
     <div class="section">
-      <div class="section-title">
-        <span>${escapeHtml(section.title || '')}</span>
-        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-      </div>
+      ${renderSectionTitle(section.title || '', section.meta || '')}
       <div class="table-wrap">
         <table class="data-table generic-table">
           <colgroup>${colgroup}</colgroup>
@@ -346,10 +440,7 @@ function renderLeaderboard(section = {}) {
 
   return `
     <div class="section">
-      <div class="section-title">
-        <span>${escapeHtml(section.title || '排行榜')}</span>
-        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-      </div>
+      ${renderSectionTitle(section.title || '排行榜', section.meta || '')}
       <div class="leaderboard-list">${rows}</div>
       ${selfBlock}
     </div>
@@ -381,10 +472,7 @@ function renderBarChart(section = {}) {
 
   return `
     <div class="section chart-section">
-      <div class="section-title">
-        <span>${escapeHtml(section.title || '')}</span>
-        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-      </div>
+      ${renderChartHead(section.title || '', section.meta || '')}
       <svg class="column-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '')}">
         <text class="column-unit" x="10" y="14">${escapeHtml(section.yLabel || '')}</text>
         ${tickValues.map((value) => {
@@ -401,7 +489,7 @@ function renderBarChart(section = {}) {
           const y = top + graphHeight - barHeight
           const label = item.label || ''
           return `
-            <rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, barHeight).toFixed(1)}" rx="2" />
+            <rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, barHeight).toFixed(1)}"  />
             ${value > 0 ? `<text class="column-bar-value" x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}">${escapeHtml(item.valueText ?? formatY(value))}</text>` : ''}
             ${index % labelStep === 0 || index === items.length - 1 ? `<text class="column-x-label" x="${(x + barWidth / 2).toFixed(1)}" y="${height - 10}">${escapeHtml(label)}</text>` : ''}
           `
@@ -442,10 +530,7 @@ function renderColumnChart(section = {}) {
 
   return `
     <div class="section chart-section">
-      <div class="chart-head">
-        <div class="chart-title">${escapeHtml(section.title || '')}</div>
-        ${section.meta ? `<div class="section-meta">${escapeHtml(section.meta)}</div>` : ''}
-      </div>
+      ${renderChartHead(section.title || '', section.meta || '')}
       <svg class="column-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '')}">
         ${ticks.map((ratio) => {
           const y = baseY - graphHeight * ratio
@@ -460,7 +545,7 @@ function renderColumnChart(section = {}) {
           const barHeight = value <= 0 ? 0 : Math.max(2, (value / max) * graphHeight)
           const x = left + slotWidth * index + (slotWidth - barWidth) / 2
           const y = baseY - barHeight
-          return `<rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="2"><title>${escapeHtml(item.label || '')} ${escapeHtml(item.valueText ?? value)}</title></rect>`
+          return `<rect class="column-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" ><title>${escapeHtml(item.label || '')} ${escapeHtml(item.valueText ?? value)}</title></rect>`
         }).join('')}
         <line class="chart-axis-line" x1="${left}" y1="${baseY}" x2="${left + graphWidth}" y2="${baseY}" />
         ${items.map((item, index) => {
@@ -474,9 +559,12 @@ function renderColumnChart(section = {}) {
 }
 
 function movingAverage(items = [], windowSize = 7) {
+  const size = Math.max(3, windowSize)
+  const half = Math.floor(size / 2)
   return items.map((item, index) => {
-    const start = Math.max(0, index - windowSize + 1)
-    const slice = items.slice(start, index + 1)
+    const start = Math.max(0, index - half)
+    const end = Math.min(items.length - 1, index + half)
+    const slice = items.slice(start, end + 1)
     const avg = slice.reduce((sum, row) => sum + Number(row.value || 0), 0) / Math.max(1, slice.length)
     return { ...item, value: avg }
   })
@@ -502,19 +590,21 @@ function renderTrendChart(section = {}) {
   const graphHeight = height - top - bottom
   const baseY = top + graphHeight
   const max = Math.max(1, ...items.map(item => item.value))
-  const smooth = movingAverage(items, Math.min(7, Math.max(2, items.length)))
+  const smoothWindow = Math.min(9, Math.max(3, Math.floor(items.length / 3)))
+  const smooth = movingAverage(items, smoothWindow)
   const xFor = index => left + (items.length === 1 ? graphWidth / 2 : (graphWidth * index) / (items.length - 1))
   const yFor = value => baseY - (graphHeight * Math.max(0, Number(value || 0))) / max
-  const linePoints = smooth.map((item, index) => `${xFor(index).toFixed(1)},${yFor(item.value).toFixed(1)}`).join(' ')
-  const areaPoints = `${left},${baseY.toFixed(1)} ${linePoints} ${(left + graphWidth).toFixed(1)},${baseY.toFixed(1)}`
+  const smoothCoords = smooth.map((item, index) => ({
+    x: xFor(index),
+    y: yFor(item.value)
+  }))
+  const linePath = buildSmoothLinePath(smoothCoords)
+  const areaPath = buildSmoothAreaPath(smoothCoords, baseY)
   const labelStep = Math.max(1, Math.ceil(items.length / 8))
 
   return `
     <div class="section chart-section">
-      <div class="chart-head">
-        <div class="chart-title">${escapeHtml(section.title || '编程趋势')}</div>
-        ${section.meta ? `<div class="section-meta">${escapeHtml(section.meta)}</div>` : ''}
-      </div>
+      ${renderChartHead(section.title || '编程趋势', section.meta || '')}
       <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(section.title || '编程趋势')}">
         ${[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = baseY - graphHeight * ratio
@@ -523,8 +613,8 @@ function renderTrendChart(section = {}) {
             <text class="chart-axis-y" x="${left - 8}" y="${(y + 4).toFixed(1)}">${compactAxisValue(max * ratio)}</text>
           `
         }).join('')}
-        <polygon class="chart-area" points="${areaPoints}" />
-        <polyline class="chart-line" points="${linePoints}" />
+        <path class="chart-area" d="${areaPath}" />
+        <path class="chart-line" d="${linePath}" />
         ${items.map((item, index) => {
           const x = xFor(index)
           const y = yFor(item.value)
@@ -574,10 +664,7 @@ function renderCategoryHeatmap(section = {}) {
 
   return `
     <div class="section">
-      <div class="section-title">
-        <span>${escapeHtml(section.title || '分类趋势')}</span>
-        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-      </div>
+      ${renderSectionTitle(section.title || '分类趋势', section.meta || '')}
       <div class="matrix" style="--matrix-cols:${dates.length}">
         <div class="matrix-corner"></div>
         ${dates.map((date, index) => `<div class="matrix-date">${index % labelStep === 0 || index === dates.length - 1 ? escapeHtml(date.slice(5)) : ''}</div>`).join('')}
@@ -611,10 +698,7 @@ function renderHeatmap(section = {}) {
 
   return `
     <div class="section">
-      <div class="section-title">
-        <span>${escapeHtml(section.title || '')}</span>
-        ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-      </div>
+      ${renderSectionTitle(section.title || '', section.meta || '')}
       <div class="heatmap">
         <div class="heatmap-corner"></div>
         ${Array.from({ length: 24 }, (_, hour) => `<div class="heatmap-hour">${hour}</div>`).join('')}
@@ -632,7 +716,33 @@ function renderHeatmap(section = {}) {
   `
 }
 
-function renderSection(section = {}) {
+function renderListItem(item = {}, options = {}) {
+  const { resPath = '', languageSection = false } = options
+  const rawName = item.name || item.command || ''
+  const displayName = languageSection ? normalizeListName(rawName) : rawName
+  const profile = languageSection ? resolveLanguageProfile(rawName) : null
+  const accentColor = profile?.color || THEME_COLOR
+  const iconUrl = getLanguageIconUrl(resPath, profile?.icon || 'default-code.svg')
+  const accentStyle = languageSection
+    ? ` style="--list-accent: ${accentColor}; background: ${buildListAccentBackground(accentColor)};"`
+    : ''
+  const iconHtml = languageSection
+    ? `<div class="list-icon" aria-hidden="true"><img src="${escapeHtml(iconUrl)}" alt="" loading="eager" /></div>`
+    : ''
+
+  return `
+    <div class="list-item${languageSection ? ' list-item--accent' : ''}"${accentStyle}>
+      ${iconHtml}
+      <div class="list-left">
+        <div class="list-name">${escapeHtml(displayName)}</div>
+        ${item.sub || item.desc ? `<div class="list-sub">${escapeHtml(item.sub || item.desc)}</div>` : ''}
+      </div>
+      ${item.value ? `<div class="list-value">${escapeHtml(item.value)}</div>` : ''}
+    </div>
+  `
+}
+
+function renderSection(section = {}, resPath = '') {
   if (section.type === 'time-distribution') return renderTimeDistribution(section)
   if (section.type === 'session-table') return renderSessionTable(section.items || [])
   if (section.type === 'table') return renderGenericTable(section)
@@ -643,12 +753,7 @@ function renderSection(section = {}) {
   if (section.type === 'category-heatmap') return renderCategoryHeatmap(section)
   if (section.type === 'heatmap') return renderHeatmap(section)
 
-  const title = `
-    <div class="section-title">
-      <span>${escapeHtml(section.title || '')}</span>
-      ${section.meta ? `<span class="section-meta">${escapeHtml(section.meta)}</span>` : ''}
-    </div>
-  `
+  const title = renderSectionTitle(section.title || '', section.meta || '')
 
   if (section.type === 'chips') {
     const chips = (section.items || [])
@@ -657,76 +762,55 @@ function renderSection(section = {}) {
     return `<div class="section">${title}<div class="chips">${chips}</div></div>`
   }
 
+  const languageSection = isLanguageSection(section)
   const rows = (section.items || [])
-    .map((item) => `
-      <div class="list-item">
-        <div class="list-left">
-          <div class="list-name">${escapeHtml(item.name || item.command || '')}</div>
-          ${item.sub || item.desc ? `<div class="list-sub">${escapeHtml(item.sub || item.desc)}</div>` : ''}
-        </div>
-        ${item.value ? `<div class="list-value">${escapeHtml(item.value)}</div>` : ''}
-      </div>
-    `)
+    .map((item) => renderListItem(item, { resPath, languageSection }))
     .join('')
 
   return `<div class="section">${title}<div class="list">${rows}</div></div>`
 }
 
-function renderSections(items = []) {
-  return (items || []).map((section) => renderSection(section)).join('')
+function renderSections(items = [], resPath = '') {
+  return (items || []).map((section) => renderSection(section, resPath)).join('')
 }
 
 function renderSessionCards(items = []) {
   return renderSessionTable(items)
 }
 
-function buildRenderPage(view = {}) {
+export function buildRenderPage(view = {}) {
   const defaultTitle = {
     help: 'CodeTime 帮助',
-    today: 'CodeTime 今日',
+    today: 'CodeTime Today',
     overview: 'CodeTime 概览',
-    agent: 'CodeTime AI 统计',
-    sessions: 'CodeTime AI 记录',
+    agent: VIBE_LABELS.statsTitle,
+    sessions: VIBE_LABELS.recordsTitle,
     distribution: 'CodeTime 时间分布',
     rank: 'CodeTime 排行榜'
   }
   const defaultSubtitle = {
-    help: '绑定账号后可查询编程统计、多维统计、日志和 AI Agent 使用记录。',
+    help: '绑定账号后可查询编程统计、多维统计、日志和 AI 使用记录。',
     today: '今日数据总览',
     overview: '与网页概览页一致的编程趋势、语言、项目和时间分布聚合。',
-    agent: '按日、周、月、年查看 AI 统计',
-    sessions: '最新 AI 会话记录',
+    agent: VIBE_LABELS.statsSubtitle,
+    sessions: VIBE_LABELS.recordsSubtitle,
     distribution: '按小时查看编程活跃分布',
     rank: '公开编程时长榜单'
   }
   const title = view.title || defaultTitle[view.type] || ''
   const metricsHtml = renderMetrics(view.metrics)
-  const typeLabel = {
-    help: 'GUIDE',
-    today: 'TODAY',
-    overview: 'OVERVIEW',
-    agent: 'AGENT',
-    sessions: 'SESSIONS',
-    distribution: 'DISTRIBUTION',
-    rank: 'LEADERBOARD'
-  }[view.type] || 'REPORT'
+  const heroUserFields = buildHeroUserFields(view.user)
+  const subtitle = heroUserFields.heroAsideClass
+    ? (view.subtitle || defaultSubtitle[view.type] || '')
+    : ''
 
   return {
     pageTitle: title,
-    typeLabel,
     title,
-    subtitle: view.subtitle || defaultSubtitle[view.type] || '',
-    generatedAt: new Date().toLocaleString('zh-CN', {
-      timeZone: getDefaultTimezone(),
-      hour12: false,
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    }),
-    badgesHtml: renderBadges(view.badges),
+    subtitle,
+    ...heroUserFields,
     metricsBlockHtml: metricsHtml ? `<div class="grid">${metricsHtml}</div>` : '',
-    sectionsHtml: renderSections(view.sections),
+    sectionsHtml: renderSections(view.sections, view.resPath),
     sessionsHtml: renderSessionCards(view.sessions)
   }
 }
@@ -750,27 +834,6 @@ export function formatDurationMs(ms = 0) {
 export function formatUsd(value = 0, digits = 2) {
   const num = Number(value || 0)
   return `$${num.toFixed(digits)}`
-}
-
-export function formatTokenValue(value = 0) {
-  const num = Number(value || 0)
-  const abs = Math.abs(num)
-  let scaled = num
-  let unit = ''
-
-  if (abs >= 1e9) {
-    scaled = num / 1e9
-    unit = 'B'
-  } else if (abs >= 1e6) {
-    scaled = num / 1e6
-    unit = 'M'
-  } else if (abs >= 1e3) {
-    scaled = num / 1e3
-    unit = 'K'
-  }
-
-  if (!unit) return formatNumber(num)
-  return `${trimDecimals(scaled.toFixed(abs >= 100 ? 0 : abs >= 10 ? 1 : 2))}${unit}(${formatNumber(num)})`
 }
 
 export function formatDateTime(value) {

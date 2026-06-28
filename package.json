@@ -1,0 +1,14 @@
+{
+  "name": "codetime-plugin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node preview/server.mjs"
+  },
+  "dependencies": {
+    "axios": "^1.9.0"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "^5.2.8"
+  }
+}

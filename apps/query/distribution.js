@@ -1,6 +1,7 @@
 import plugin from '../../../../lib/plugins/plugin.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 import {
+  buildHeroUser,
   getApiContext,
   getTimeRange,
   parseTimeScope,
@@ -43,8 +44,7 @@ export class distribution extends plugin {
 
       const view = {
         title: `CodeTime ${scope}时间分布`,
-        subtitle: `日期：${formatDateTime(range.startTime).slice(0, 10)}`,
-        badges: [ctx.tz || getDefaultTimezone()],
+        user: await buildHeroUser(ctx.account, `日期：${formatDateTime(range.startTime).slice(0, 10)}`),
         sections: [
           {
             title: '编程时间分布',

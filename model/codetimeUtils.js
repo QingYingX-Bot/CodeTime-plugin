@@ -1,3 +1,4 @@
+import axios from 'axios'
 import common from '../../../lib/common/common.js'
 import {
   CodeTimeApi,
@@ -6,6 +7,9 @@ import {
   getCurrentAccount,
   getDefaultTimezone
 } from './codetimeApi.js'
+
+const AVATAR_TIMEOUT_MS = 2500
+const AVATAR_MAX_BYTES = 220 * 1024
 
 export const CODETIME_FIELDS = {
   语言: { value: 'language', label: '语言' },
@@ -204,6 +208,39 @@ export function formatStatsLines(title, data = []) {
     }
   }
   return lines.join('\n')
+}
+
+export async function fetchAvatarDataUri(url = '') {
+  if (!/^https?:\/\//i.test(url)) return String(url || '').startsWith('data:') ? String(url) : ''
+
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: AVATAR_TIMEOUT_MS,
+      maxContentLength: AVATAR_MAX_BYTES,
+      headers: {
+        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'user-agent': 'Mozilla/5.0 CodeTime-plugin'
+      },
+      validateStatus: (status) => status >= 200 && status < 300
+    })
+    const type = String(response.headers?.['content-type'] || 'image/png').split(';')[0]
+    const bytes = Buffer.from(response.data)
+    if (!bytes.length || bytes.length > AVATAR_MAX_BYTES) return ''
+    return `data:${type};base64,${bytes.toString('base64')}`
+  } catch (err) {
+    logger.debug?.(`[CodeTime] 头像加载失败: ${url} ${err.message}`)
+    return ''
+  }
+}
+
+export async function buildHeroUser(account = {}, meta = '') {
+  const name = account?.username || account?.email || '未知'
+  return {
+    name,
+    meta: String(meta || '').trim(),
+    avatar: await fetchAvatarDataUri(account?.avatar || '')
+  }
 }
 
 export function formatProfileLines(user = {}) {

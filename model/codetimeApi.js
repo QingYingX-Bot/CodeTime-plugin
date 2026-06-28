@@ -55,6 +55,14 @@ export function formatNumber(num = 0) {
   return Number(num || 0).toLocaleString('zh-CN')
 }
 
+export function formatTokenValue(value = 0) {
+  return formatNumber(value)
+}
+
+export function formatTokenListValue(value = 0) {
+  return `${formatTokenValue(value)} Token`
+}
+
 export function formatPercent(percentile) {
   if (percentile === undefined || percentile === null || Number.isNaN(Number(percentile))) return '暂无'
   return `前 ${(Number(percentile) * 100).toFixed(2)}%`

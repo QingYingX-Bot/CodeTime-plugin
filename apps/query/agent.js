@@ -1,14 +1,18 @@
 import plugin from '../../../../lib/plugins/plugin.js'
 import {
   formatNumber,
+  formatTokenListValue,
+  formatTokenValue,
   getDefaultTimezone
 } from '../../model/codetimeApi.js'
 import {
+  buildHeroUser,
   getApiContext,
   getCalendarTimeWindow,
   parseAgentTimeScope,
   replyError
 } from '../../model/codetimeUtils.js'
+import { TOP_LABELS, VIBE_LABELS, vibeStatsTitle } from '../../model/codetimeLabels.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
 
 function formatDurationMs(ms = 0) {
@@ -26,32 +30,6 @@ function formatDurationMs(ms = 0) {
 function formatUsd(value = 0) {
   const num = Number(value || 0)
   return `$${num.toFixed(4)}`
-}
-
-function trimDecimals(text) {
-  return String(text).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
-}
-
-function formatTokenValue(value = 0) {
-  const num = Number(value || 0)
-  const abs = Math.abs(num)
-  let scaled = num
-  let unit = ''
-
-  if (abs >= 1e9) {
-    scaled = num / 1e9
-    unit = 'B'
-  } else if (abs >= 1e6) {
-    scaled = num / 1e6
-    unit = 'M'
-  } else if (abs >= 1e3) {
-    scaled = num / 1e3
-    unit = 'K'
-  }
-
-  if (!unit) return formatNumber(num)
-
-  return `${trimDecimals(scaled.toFixed(abs >= 100 ? 0 : abs >= 10 ? 1 : 2))}${unit}(${formatNumber(num)})`
 }
 
 function formatDateOnly(value) {
@@ -104,7 +82,7 @@ function formatTopList(title, items = [], nameKeys = [], valueKeys = ['totalToke
 function formatModelTop(items = []) {
   if (!Array.isArray(items) || items.length === 0) return []
 
-  const lines = ['模型Token Top']
+  const lines = [VIBE_LABELS.modelTokenTop]
   items
     .slice()
     .sort((a, b) => getModelTokenCount(b) - getModelTokenCount(a))
@@ -116,7 +94,7 @@ function formatModelTop(items = []) {
   return lines
 }
 
-function formatTopRows(items = [], nameKeys = [], valueKeys = ['totalTokens', 'tokens'], limit = 5, formatter = formatTokenValue) {
+function formatTopRows(items = [], nameKeys = [], valueKeys = ['totalTokens', 'tokens'], limit = 5, formatter = formatTokenListValue) {
   return (items || [])
     .slice()
     .sort((a, b) => pickNumber(b, valueKeys) - pickNumber(a, valueKeys))
@@ -271,7 +249,7 @@ function formatModelRows(items = [], limit = 5) {
     .slice(0, limit)
     .map((item, index) => ({
       name: `${index + 1}. ${item.pricing?.displayName || item.model || '未知'}`,
-      value: formatTokenValue(getModelTokenCount(item))
+      value: formatTokenListValue(getModelTokenCount(item))
     }))
 }
 
@@ -289,7 +267,7 @@ function formatRangeLine(dataRange = {}, fallbackWindow = {}) {
 function formatAgentDashboard(scope, account, window, data = {}) {
   const summary = data.summary || {}
   const lines = [
-    `CodeTime AI ${scope}统计`,
+    vibeStatsTitle(scope),
     `账号：${account.username || '未知'}`,
     formatRangeLine(data.range, window),
     `会话：${formatNumber(summary.totalSessions || 0)}`,
@@ -301,7 +279,7 @@ function formatAgentDashboard(scope, account, window, data = {}) {
     `输入Token：${formatTokenValue(summary.totalInputTokens || 0)}`,
     `输出Token：${formatTokenValue(summary.totalOutputTokens || 0)}`,
     `推理Token：${formatTokenValue(summary.totalReasoningOutputTokens || 0)}`,
-    `持续时间：${formatDurationMs(summary.totalDurationMs || 0)}`,
+    `${VIBE_LABELS.duration}：${formatDurationMs(summary.totalDurationMs || 0)}`,
     `代码变更：+${formatNumber(summary.totalLinesAdded || 0)} / -${formatNumber(summary.totalLinesRemoved || 0)}`,
     `预估成本：${formatUsd(sumEstimatedCost(data))}`
   ]
@@ -309,10 +287,10 @@ function formatAgentDashboard(scope, account, window, data = {}) {
   const sources = Array.isArray(data.availableSources) ? data.availableSources.filter(Boolean) : []
   if (sources.length > 0) lines.push(`来源：${sources.join('、')}`)
 
-  lines.push(...formatTopList('项目Token Top', data.projectTokens, ['project', 'name']))
+  lines.push(...formatTopList(VIBE_LABELS.projectTokenTop, data.projectTokens, ['project', 'name']))
   lines.push(...formatModelTop(data.modelCosts))
-  lines.push(...formatTopList('Agent Token Top', data.agentCosts, ['source', 'agent', 'name']))
-  lines.push(...formatTopList('工具调用 Top', data.tools, ['tool', 'name'], ['count', 'calls', 'totalCalls'], formatNumber))
+  lines.push(...formatTopList(VIBE_LABELS.agentTokenTop, data.agentCosts, ['source', 'agent', 'name']))
+  lines.push(...formatTopList(TOP_LABELS.tools, data.tools, ['tool', 'name'], ['count', 'calls', 'totalCalls'], formatNumber))
 
   return lines.join('\n')
 }
@@ -321,7 +299,7 @@ export class agent extends plugin {
   constructor() {
     super({
       name: 'CodeTime',
-      dsc: 'CodeTime AI 统计',
+      dsc: VIBE_LABELS.statsTitle,
       event: 'message',
       priority: 50,
       rule: [
@@ -358,11 +336,11 @@ export class agent extends plugin {
       const sources = Array.isArray(data.availableSources) ? data.availableSources.filter(Boolean) : []
       const bucket = data.bucket || 'day'
       const sections = []
-      if ((data.overviewBuckets || []).length > 0) sections.push({ title: '费用图', type: 'column-chart', meta: 'estimatedCostUsd', unit: 'usd', items: formatCostChart(data.overviewBuckets, 24, bucket) })
-      if ((data.tokenBuckets || []).length > 0) sections.push({ title: 'Token 图', type: 'column-chart', meta: 'inputTokens', unit: 'token', items: formatTokenChart(data.tokenBuckets, 24, bucket) })
-      if ((data.heatmap || []).length > 0) sections.push({ title: '活跃热力', type: 'heatmap', meta: 'weekday / hour', items: formatHeatmap(data.heatmap) })
+      if ((data.overviewBuckets || []).length > 0) sections.push({ title: '费用图', type: 'column-chart', meta: '预估费用', unit: 'usd', items: formatCostChart(data.overviewBuckets, 24, bucket) })
+      if ((data.tokenBuckets || []).length > 0) sections.push({ title: 'Token 图', type: 'column-chart', meta: '输入 Token', unit: 'token', items: formatTokenChart(data.tokenBuckets, 24, bucket) })
+      if ((data.heatmap || []).length > 0) sections.push({ title: '活跃热力', type: 'heatmap', meta: '星期 · 小时', items: formatHeatmap(data.heatmap) })
       if ((data.projectTokens || []).length > 0) sections.push({
-        title: '项目明细',
+        title: VIBE_LABELS.projectDetail,
         type: 'table',
         columns: [
           { key: 'rank', label: '#', align: 'right', width: '34px' },
@@ -376,7 +354,7 @@ export class agent extends plugin {
         items: formatProjectTable(data.projectTokens)
       })
       if ((data.modelCosts || []).length > 0) sections.push({
-        title: '模型明细',
+        title: VIBE_LABELS.modelDetail,
         type: 'table',
         columns: [
           { key: 'rank', label: '#', align: 'right', width: '34px' },
@@ -390,7 +368,7 @@ export class agent extends plugin {
         items: formatModelTable(data.modelCosts)
       })
       if ((data.agentCosts || []).length > 0) sections.push({
-        title: 'Agent 明细',
+        title: VIBE_LABELS.agentDetail,
         type: 'table',
         columns: [
           { key: 'rank', label: '#', align: 'right', width: '34px' },
@@ -404,7 +382,7 @@ export class agent extends plugin {
         items: formatAgentTable(data.agentCosts)
       })
       if ((data.tools || []).length > 0) sections.push({
-        title: '工具明细',
+        title: VIBE_LABELS.toolDetail,
         type: 'table',
         columns: [
           { key: 'rank', label: '#', align: 'right', width: '34px' },
@@ -416,14 +394,13 @@ export class agent extends plugin {
         ],
         items: formatToolTable(data.tools)
       })
-      if ((data.projectTokens || []).length > 0) sections.push({ title: '项目 Token Top', items: formatTopRows(data.projectTokens, ['project', 'name']) })
-      if ((data.modelCosts || []).length > 0) sections.push({ title: '模型 Token Top', items: formatModelRows(data.modelCosts) })
-      if ((data.agentCosts || []).length > 0) sections.push({ title: 'Agent Token Top', items: formatTopRows(data.agentCosts, ['source', 'agent', 'name']) })
+      if ((data.projectTokens || []).length > 0) sections.push({ title: VIBE_LABELS.projectTokenTop, items: formatTopRows(data.projectTokens, ['project', 'name']) })
+      if ((data.modelCosts || []).length > 0) sections.push({ title: VIBE_LABELS.modelTokenTop, items: formatModelRows(data.modelCosts) })
+      if ((data.agentCosts || []).length > 0) sections.push({ title: VIBE_LABELS.agentTokenTop, items: formatTopRows(data.agentCosts, ['source', 'agent', 'name']) })
 
       const view = {
-        title: `CodeTime AI ${scope}统计`,
-        subtitle: `账号：${ctx.account.username || '未知'} · ${formatRangeLine(data.range, window).replace('范围：', '')}`,
-        badges: sources.length > 0 ? sources : ['AI Agent'],
+        title: vibeStatsTitle(scope),
+        user: await buildHeroUser(ctx.account, formatRangeLine(data.range, window).replace('范围：', '')),
         metrics: [
           { label: '会话', value: formatNumber(summary.totalSessions || 0) },
           { label: '事件', value: formatNumber(summary.totalEvents || 0) },
@@ -433,7 +410,7 @@ export class agent extends plugin {
           { label: '输入 Token', value: formatTokenValue(summary.totalInputTokens || 0) },
           { label: '输出 Token', value: formatTokenValue(summary.totalOutputTokens || 0) },
           { label: '推理 Token', value: formatTokenValue(summary.totalReasoningOutputTokens || 0) },
-          { label: '持续时间', value: formatDurationMs(summary.totalDurationMs || 0) },
+          { label: VIBE_LABELS.duration, value: formatDurationMs(summary.totalDurationMs || 0) },
           { label: '代码变更', value: `+${formatNumber(summary.totalLinesAdded || 0)} / -${formatNumber(summary.totalLinesRemoved || 0)}` },
           { label: '预估成本', value: formatUsd(sumEstimatedCost(data)) },
           { label: '命令调用', value: formatNumber(summary.totalCommandCalls || 0) }

@@ -1,8 +1,8 @@
-import axios from 'axios'
 import plugin from '../../../../lib/plugins/plugin.js'
 import { CodeTimeApi, formatDateTime, formatMinutes, formatNumber, getCurrentAccount } from '../../model/codetimeApi.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
-import { getCalendarTimeWindow } from '../../model/codetimeUtils.js'
+import { formatTopBadge } from '../../model/codetimeLabels.js'
+import { fetchAvatarDataUri, getCalendarTimeWindow } from '../../model/codetimeUtils.js'
 
 const RANK_SCOPES = {
   日: { label: '日榜', days: 1 },
@@ -11,8 +11,6 @@ const RANK_SCOPES = {
   年: { label: '年榜' }
 }
 
-const AVATAR_TIMEOUT_MS = 2500
-const AVATAR_MAX_BYTES = 220 * 1024
 const AVATAR_CONCURRENCY = 5
 
 function parseRankScope(message = '') {
@@ -61,30 +59,6 @@ function formatLeaderboard(data = {}, scope = {}, selfRank = null) {
 function formatPercentile(value) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return '暂无'
   return `前 ${(Number(value) * 100).toFixed(2)}%`
-}
-
-async function fetchAvatarDataUri(url = '') {
-  if (!/^https?:\/\//i.test(url)) return ''
-
-  try {
-    const response = await axios.get(url, {
-      responseType: 'arraybuffer',
-      timeout: AVATAR_TIMEOUT_MS,
-      maxContentLength: AVATAR_MAX_BYTES,
-      headers: {
-        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'user-agent': 'Mozilla/5.0 CodeTime-plugin'
-      },
-      validateStatus: (status) => status >= 200 && status < 300
-    })
-    const type = String(response.headers?.['content-type'] || 'image/png').split(';')[0]
-    const bytes = Buffer.from(response.data)
-    if (!bytes.length || bytes.length > AVATAR_MAX_BYTES) return ''
-    return `data:${type};base64,${bytes.toString('base64')}`
-  } catch (err) {
-    logger.debug?.(`[CodeTime] 头像加载失败: ${url} ${err.message}`)
-    return ''
-  }
 }
 
 async function mapLimit(items = [], limit = 4, mapper) {
@@ -163,7 +137,7 @@ async function renderLeaderboardImage(scope = {}, data = {}, account = {}, selfR
       title: `CodeTime ${scope.label}`,
       subtitle: `公开编程时长榜单 · 统计 ${scope.days} 天`,
       badges: [
-        `Top ${Math.min(20, entries.length)}`,
+        formatTopBadge(Math.min(20, entries.length)),
         `${formatNumber(data.totalUsers || entries.length)} 人`,
         data.updatedAt ? `更新 ${formatDateTime(data.updatedAt)}` : ''
       ],

@@ -2,39 +2,17 @@ import plugin from '../../../../lib/plugins/plugin.js'
 import common from '../../../../lib/common/common.js'
 import {
   formatNumber,
+  formatTokenValue,
   getDefaultTimezone
 } from '../../model/codetimeApi.js'
 import {
+  buildHeroUser,
   getApiContext,
   getLastNumber,
   replyError
 } from '../../model/codetimeUtils.js'
+import { VIBE_LABELS } from '../../model/codetimeLabels.js'
 import { renderCodeTimeCard } from '../../model/codetimeRender.js'
-
-function trimDecimals(text) {
-  return String(text).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
-}
-
-function formatTokenValue(value = 0) {
-  const num = Number(value || 0)
-  const abs = Math.abs(num)
-  let scaled = num
-  let unit = ''
-
-  if (abs >= 1e9) {
-    scaled = num / 1e9
-    unit = 'B'
-  } else if (abs >= 1e6) {
-    scaled = num / 1e6
-    unit = 'M'
-  } else if (abs >= 1e3) {
-    scaled = num / 1e3
-    unit = 'K'
-  }
-
-  if (!unit) return formatNumber(num)
-  return `${trimDecimals(scaled.toFixed(abs >= 100 ? 0 : abs >= 10 ? 1 : 2))}${unit}(${formatNumber(num)})`
-}
 
 function formatDurationMs(ms = 0) {
   const totalMinutes = Math.max(0, Math.round(Number(ms || 0) / 60000))
@@ -101,7 +79,7 @@ export class sessions extends plugin {
   constructor() {
     super({
       name: 'CodeTime',
-      dsc: 'CodeTime AI 记录',
+      dsc: VIBE_LABELS.recordsTitle,
       event: 'message',
       priority: 50,
       rule: [
@@ -119,13 +97,12 @@ export class sessions extends plugin {
     try {
       const data = await ctx.api.getAgentSessions({ limit })
       const sessions = Array.isArray(data?.sessions) ? data.sessions : []
-      if (sessions.length === 0) return e.reply('暂无 AI 记录')
+      if (sessions.length === 0) return e.reply(VIBE_LABELS.noRecords)
 
       const messages = sessions.slice(0, limit).map((session, index) => formatSessionNode(session, index))
       const view = {
-        title: 'CodeTime AI 记录',
-        subtitle: `最新 ${messages.length} 条会话记录`,
-        badges: ['Agent Sessions', `limit=${limit}`],
+        title: VIBE_LABELS.recordsTitle,
+        user: await buildHeroUser(ctx.account, `最近 ${messages.length} 条会话`),
         sessions: sessions.slice(0, limit).map((session, index) => formatSessionView(session, index))
       }
 
@@ -140,7 +117,7 @@ export class sessions extends plugin {
         return e.reply(messages[0])
       }
 
-      return e.reply(await common.makeForwardMsg(e, messages, 'CodeTime AI 记录'))
+      return e.reply(await common.makeForwardMsg(e, messages, VIBE_LABELS.recordsTitle))
     } catch (err) {
       return replyError(e, err)
     }
