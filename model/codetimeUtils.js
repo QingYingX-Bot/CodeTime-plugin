@@ -237,6 +237,7 @@ export async function fetchAvatarDataUri(url = '') {
 export async function buildHeroUser(account = {}, meta = '') {
   const name = account?.username || account?.email || '未知'
   return {
+    accountId: account?.id,
     name,
     meta: String(meta || '').trim(),
     avatar: await fetchAvatarDataUri(account?.avatar || '')

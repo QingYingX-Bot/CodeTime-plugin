@@ -107,7 +107,10 @@ export class sessions extends plugin {
       }
 
       try {
-        const img = await renderCodeTimeCard('sessions', { view })
+        const img = await renderCodeTimeCard('sessions', {
+          view,
+          saveSuffix: `${limit}-${new Date().toISOString().slice(0, 10)}`
+        })
         if (img) return e.reply(img)
       } catch (err) {
         logger.error(`[CodeTime] AI 记录渲染失败: ${err}`)

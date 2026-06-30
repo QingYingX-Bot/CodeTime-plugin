@@ -55,7 +55,7 @@ export class distribution extends plugin {
       }
 
       try {
-        const img = await renderCodeTimeCard('distribution', { view })
+        const img = await renderCodeTimeCard('distribution', { view, scope })
         if (img) return e.reply(img)
       } catch (err) {
         logger.error(`[CodeTime] 时间分布渲染失败: ${err}`)

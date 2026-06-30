@@ -12,16 +12,44 @@ import {
 } from './codetimeLanguages.js'
 import { formatDistributionMeta, formatSectionMeta, VIBE_LABELS } from './codetimeLabels.js'
 
+function sanitizeSaveIdSegment(value = '') {
+  return String(value)
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\.\./g, '_')
+}
+
+function resolveSaveId(name, data = {}) {
+  if (data.saveId) return sanitizeSaveIdSegment(data.saveId)
+
+  const parts = [name]
+  const accountId = data.accountId ?? data.view?.user?.accountId
+  if (accountId !== undefined && accountId !== null && accountId !== '') {
+    parts.push(String(accountId))
+  }
+  if (data.scope) parts.push(String(data.scope))
+  if (data.saveSuffix) parts.push(String(data.saveSuffix))
+
+  if (parts.length === 1 && name === 'help') return name
+
+  if (parts.length === 1) {
+    return `${sanitizeSaveIdSegment(name)}-${Date.now()}`
+  }
+
+  return parts.map(sanitizeSaveIdSegment).join('-')
+}
+
 export async function renderCodeTimeCard(name, data = {}) {
   const { default: puppeteer } = await import('../../../lib/puppeteer/puppeteer.js')
   const resPath = `${process.cwd().replace(/\\/g, '/')}/plugins/CodeTime-plugin/resources/`
   const page = buildRenderPage({ type: name, resPath, ...(data.view || {}) })
   const renderName = `CodeTime-plugin/${name}`
+  const saveId = resolveSaveId(name, data)
   const tplPath = `${process.cwd()}/plugins/CodeTime-plugin/resources/template/card.html`
   const template = fs.readFileSync(tplPath, 'utf8')
-  const htmlFile = `${process.cwd()}/temp/html/${renderName}/render.html`
+  const htmlDir = `${process.cwd()}/temp/html/${renderName}/${saveId}`
+  const htmlFile = `${htmlDir}/render.html`
 
-  fs.mkdirSync(`./temp/html/${renderName}`, { recursive: true })
+  fs.mkdirSync(htmlDir, { recursive: true })
   fs.writeFileSync(htmlFile, applyTemplate(template, {
     ResPath: resPath,
     ...page
@@ -30,9 +58,9 @@ export async function renderCodeTimeCard(name, data = {}) {
   return puppeteer.screenshot(renderName, {
     tplFile: htmlFile,
     ResPath: resPath,
-    saveId: data.saveId || name,
     ...data,
-    ...page
+    ...page,
+    saveId
   })
 }
 

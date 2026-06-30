@@ -257,7 +257,11 @@ export class today extends plugin {
       }
 
       try {
-        const img = await renderCodeTimeCard('today', { view })
+        const img = await renderCodeTimeCard('today', {
+          view,
+          scope: '日',
+          saveSuffix: formatDateTime(range.startTime).slice(0, 10)
+        })
         if (img) return e.reply(img)
       } catch (err) {
         logger.error(`[CodeTime] 今日渲染失败: ${err}`)

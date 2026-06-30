@@ -215,7 +215,7 @@ export class overview extends plugin {
         sections
       }
 
-      const img = await renderCodeTimeCard('overview', { view })
+      const img = await renderCodeTimeCard('overview', { view, scope })
       if (img) return e.reply(img)
 
       return e.reply([

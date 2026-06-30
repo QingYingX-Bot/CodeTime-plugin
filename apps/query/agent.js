@@ -419,7 +419,7 @@ export class agent extends plugin {
       }
 
       try {
-        const img = await renderCodeTimeCard('agent', { view })
+        const img = await renderCodeTimeCard('agent', { view, scope })
         if (img) return e.reply(img)
       } catch (err) {
         logger.error(`[CodeTime] AI 统计渲染失败: ${err}`)

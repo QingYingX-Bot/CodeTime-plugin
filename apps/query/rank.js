@@ -151,7 +151,7 @@ async function renderLeaderboardImage(scope = {}, data = {}, account = {}, selfR
         }
       ]
     },
-    saveId: `rank-${scope.scope}`,
+    saveId: `rank-${scope.scope}-${account?.id || 'guest'}`,
     pageGotoParams: {
       timeout: 15000,
       waitUntil: 'domcontentloaded'
